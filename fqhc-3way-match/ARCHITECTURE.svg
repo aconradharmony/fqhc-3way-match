@@ -1,0 +1,108 @@
+<svg viewBox="0 0 800 900" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .title { font: bold 24px sans-serif; fill: #1a202c; }
+      .subtitle { font: 16px sans-serif; fill: #4a5568; }
+      .box-title { font: bold 14px sans-serif; fill: #2d3748; }
+      .box-text { font: 12px sans-serif; fill: #4a5568; }
+      .label { font: 11px sans-serif; fill: #718096; }
+      .component { fill: #fff; stroke: #4299e1; stroke-width: 2; rx: 8; }
+      .data { fill: #f7fafc; stroke: #718096; stroke-width: 2; rx: 8; }
+      .user { fill: #e6fffa; stroke: #38b2ac; stroke-width: 2; rx: 8; }
+      .api { fill: #fef5e7; stroke: #f6ad55; stroke-width: 2; rx: 8; }
+      .arrow { stroke: #4a5568; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .data-arrow { stroke: #38b2ac; stroke-width: 2; fill: none; marker-end: url(#arrowhead-green); stroke-dasharray: 5,5; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#4a5568" />
+    </marker>
+    <marker id="arrowhead-green" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#38b2ac" />
+    </marker>
+  </defs>
+  
+  <!-- Title -->
+  <text x="400" y="35" text-anchor="middle" class="title">FQHC 3-Way Match System Architecture</text>
+  <text x="400" y="60" text-anchor="middle" class="subtitle">Automated Purchase Order Verification</text>
+  
+  <!-- Clinic Staff -->
+  <rect x="50" y="100" width="200" height="100" class="user"/>
+  <text x="150" y="125" text-anchor="middle" class="box-title">👤 Clinic Staff</text>
+  <text x="150" y="145" text-anchor="middle" class="box-text">Nurse/Receiver</text>
+  <text x="150" y="165" text-anchor="middle" class="box-text">📱 Takes photo of</text>
+  <text x="150" y="180" text-anchor="middle" class="box-text">packing slip</text>
+  
+  <!-- Netsuite -->
+  <rect x="550" y="100" width="200" height="100" class="data"/>
+  <text x="650" y="125" text-anchor="middle" class="box-title">🗄️ Netsuite ERP</text>
+  <text x="650" y="145" text-anchor="middle" class="box-text">Purchase Orders</text>
+  <text x="650" y="165" text-anchor="middle" class="box-text">CSV Export</text>
+  <text x="650" y="180" text-anchor="middle" class="box-text">Open POs</text>
+  
+  <!-- Upload arrow -->
+  <path d="M 150 200 L 150 250 L 250 250" class="arrow"/>
+  <text x="160" y="230" class="label">POST /api/upload-packing-slip</text>
+  
+  <!-- CSV arrow -->
+  <path d="M 650 200 L 650 250 L 550 250" class="data-arrow"/>
+  <text x="580" y="230" class="label">Loaded on startup</text>
+  
+  <!-- FastAPI Application -->
+  <rect x="50" y="270" width="700" height="280" class="component"/>
+  <text x="400" y="295" text-anchor="middle" class="box-title">⚡ FastAPI Application</text>
+  
+  <!-- Vision API -->
+  <rect x="80" y="320" width="220" height="140" class="api"/>
+  <text x="190" y="340" text-anchor="middle" class="box-title">🔍 Vision Processing</text>
+  <text x="190" y="360" text-anchor="middle" class="box-text">Claude Vision API</text>
+  <text x="100" y="385" class="box-text">• Extract PO Number</text>
+  <text x="100" y="405" class="box-text">• Extract Vendor</text>
+  <text x="100" y="425" class="box-text">• Extract Line Items</text>
+  <text x="100" y="445" class="box-text">• Detect Handwriting</text>
+  
+  <!-- PO Matcher -->
+  <rect x="340" y="320" width="220" height="140" class="component"/>
+  <text x="450" y="340" text-anchor="middle" class="box-title">🔎 PO Matcher</text>
+  <text x="450" y="360" text-anchor="middle" class="box-text">CSV Lookup Engine</text>
+  <text x="360" y="385" class="box-text">• Fuzzy vendor match</text>
+  <text x="360" y="405" class="box-text">• Quantity comparison</text>
+  <text x="360" y="425" class="box-text">• Item matching</text>
+  <text x="360" y="445" class="box-text">• Flag discrepancies</text>
+  
+  <!-- Processing arrow -->
+  <path d="M 300 390 L 340 390" class="arrow"/>
+  <text x="305" y="385" class="label">Vision data</text>
+  
+  <!-- Database -->
+  <rect x="80" y="480" width="480" height="60" class="data"/>
+  <text x="320" y="500" text-anchor="middle" class="box-title">💾 Processing History Database</text>
+  <text x="320" y="520" text-anchor="middle" class="box-text">In-memory (Production: PostgreSQL) - Stores all uploaded slips, match results, discrepancies</text>
+  
+  <!-- Dashboard arrow -->
+  <path d="M 400 550 L 400 590" class="arrow"/>
+  <text x="410" y="575" class="label">GET /</text>
+  
+  <!-- Finance Dashboard -->
+  <rect x="150" y="600" width="500" height="120" class="user"/>
+  <text x="400" y="625" text-anchor="middle" class="box-title">📊 Finance Dashboard (Web Browser)</text>
+  <text x="220" y="655" class="box-text">✅ Match status indicators</text>
+  <text x="220" y="675" class="box-text">⚠️ Discrepancy alerts</text>
+  <text x="220" y="695" class="box-text">🖼️ Photo previews</text>
+  <text x="480" y="655" class="box-text">📈 Real-time statistics</text>
+  <text x="480" y="675" class="box-text">🔍 Detailed match info</text>
+  <text x="480" y="695" class="box-text">📥 Upload interface</text>
+  
+  <!-- Data Flow Legend -->
+  <text x="50" y="760" class="box-title">Data Flow:</text>
+  <path d="M 50 775 L 120 775" class="arrow"/>
+  <text x="130" y="780" class="label">API Request</text>
+  
+  <path d="M 250 775 L 320 775" class="data-arrow"/>
+  <text x="330" y="780" class="label">Data Load</text>
+  
+  <!-- Key Features -->
+  <text x="50" y="820" class="box-title">Key Features:</text>
+  <text x="50" y="840" class="box-text">• Handles low-quality clinic photos (shadows, blur, glare)</text>
+  <text x="50" y="860" class="box-text">• Detects handwritten receiving notes and checkmarks</text>
+  <text x="50" y="880" class="box-text">• Fuzzy matching tolerates vendor name variations</text>
+</svg>
