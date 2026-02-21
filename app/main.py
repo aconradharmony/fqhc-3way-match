@@ -16,15 +16,20 @@ from typing import Dict, List, Optional
 from .po_matcher import POManager, MatchResult
 from .vision_prompt import get_vision_prompt
 from .admin_html import get_admin_html
+from .invoice_html import get_invoice_html
+from .invoice_vision_prompt import get_invoice_vision_prompt
+from .invoice_matcher import ThreeWayMatcher, parse_invoice_from_vision
 
 app = FastAPI(title="FQHC 3-Way Match System")
 
 # Initialize components
 po_manager = POManager()
 anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+three_way_matcher = ThreeWayMatcher()
 
 # Store processing results
 processing_history: List[Dict] = []
+invoice_history: List[Dict] = []
 
 # Create required directories if they don't exist
 os.makedirs("uploads", exist_ok=True)
@@ -380,7 +385,8 @@ def generate_dashboard_html() -> str:
     </head>
     <body>
         <div class="header">
-            <a href="/admin" class="admin-link">⚙️ Admin Panel</a>
+            <a href="/admin" class="admin-link" style="right: 12rem;">⚙️ Admin</a>
+            <a href="/invoices" class="admin-link">💰 Invoices</a>
             <h1>🏥 FQHC 3-Way Match Dashboard</h1>
             <p>Purchase Order Verification System</p>
         </div>
@@ -561,6 +567,181 @@ async def upload_po_csv(file: UploadFile = File(...)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/po-stats")
+async def get_po_stats():
+    """Get current PO database statistics"""
+    vendor_set = set()
+    line_item_count = 0
+    
+    for po in po_manager.po_dict.values():
+        vendor_set.add(po.vendor_name)
+        line_item_count += len(po.line_items)
+    
+    return {
+        "po_count": len(po_manager.po_dict),
+        "line_item_count": line_item_count,
+        "vendor_count": len(vendor_set)
+    }
+
+
+@app.get("/invoices", response_class=HTMLResponse)
+async def invoice_page():
+    """Invoice upload and management page"""
+    return get_invoice_html()
+
+
+@app.post("/api/upload-invoice")
+async def upload_invoice(file: UploadFile = File(...)):
+    """Upload and process invoice for 3-way matching"""
+    try:
+        # Validate file type
+        if not (file.content_type.startswith("image/") or file.content_type == "application/pdf"):
+            raise HTTPException(400, "File must be an image or PDF")
+        
+        # Save uploaded file
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"invoice_{timestamp}_{file.filename}"
+        filepath = Path("uploads") / filename
+        
+        content = await file.read()
+        with open(filepath, "wb") as f:
+            f.write(content)
+        
+        # Process with Claude Vision
+        invoice_vision_data = await process_invoice_with_vision(content, file.content_type)
+        
+        # Parse into InvoiceData structure
+        invoice_data = parse_invoice_from_vision(invoice_vision_data)
+        
+        # Find matching PO
+        po_data = None
+        if invoice_data.po_number:
+            po = po_manager.po_dict.get(invoice_data.po_number)
+            if po:
+                po_data = {
+                    "po_number": po.po_number,
+                    "vendor": po.vendor_name,
+                    "line_items": [
+                        {
+                            "description": item.item_description,
+                            "quantity_ordered": item.quantity_ordered,
+                            "unit_price": item.unit_price
+                        }
+                        for item in po.line_items
+                    ]
+                }
+        
+        # Find matching packing slip
+        packing_slip_data = None
+        for record in processing_history:
+            if record.get("vision_data", {}).get("po_number") == invoice_data.po_number:
+                packing_slip_data = record.get("vision_data")
+                break
+        
+        # Perform 3-way match
+        match_result = three_way_matcher.match_invoice(
+            invoice_data,
+            po_data=po_data,
+            packing_slip_data=packing_slip_data
+        )
+        
+        # Store result
+        invoice_record = {
+            "id": len(invoice_history) + 1,
+            "timestamp": timestamp,
+            "filename": filename,
+            "filepath": str(filepath),
+            "invoice_data": invoice_vision_data,
+            "invoice_number": invoice_data.invoice_number,
+            "po_number": invoice_data.po_number,
+            "vendor": invoice_data.vendor_name,
+            "total_amount": invoice_data.total_amount,
+            "match_status": match_result["match_status"],
+            "match_result": match_result
+        }
+        
+        invoice_history.append(invoice_record)
+        
+        return {
+            "success": True,
+            "message": match_result["summary"],
+            "invoice_number": invoice_data.invoice_number,
+            "po_number": invoice_data.po_number,
+            "match_status": match_result["match_status"],
+            "discrepancies": match_result["discrepancies"],
+            "warnings": match_result.get("warnings", []),
+            "details": match_result["details"]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/invoices")
+async def get_invoices():
+    """Get all uploaded invoices"""
+    return JSONResponse(content=invoice_history)
+
+
+async def process_invoice_with_vision(content: bytes, content_type: str) -> Dict:
+    """Process invoice with Claude Vision API"""
+    
+    # Prepare image data
+    if content_type == "application/pdf":
+        # For PDF, we'll use document type
+        media_type = "application/pdf"
+        image_data = base64.standard_b64encode(content).decode("utf-8")
+    else:
+        # For images
+        media_type = content_type
+        image_data = base64.standard_b64encode(content).decode("utf-8")
+    
+    # Call Claude Vision API
+    message = anthropic_client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2000,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image" if content_type.startswith("image/") else "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": image_data,
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": get_invoice_vision_prompt()
+                    }
+                ],
+            }
+        ],
+    )
+    
+    # Extract JSON response
+    response_text = message.content[0].text
+    
+    # Parse JSON from response
+    try:
+        if "```json" in response_text:
+            json_str = response_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in response_text:
+            json_str = response_text.split("```")[1].split("```")[0].strip()
+        else:
+            json_str = response_text.strip()
+        
+        return json.loads(json_str)
+    except json.JSONDecodeError as e:
+        return {
+            "error": "Failed to parse JSON",
+            "raw_response": response_text,
+            "parse_error": str(e)
+        }
 
 
 @app.get("/api/po-stats")
