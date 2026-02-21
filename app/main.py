@@ -200,6 +200,25 @@ def generate_dashboard_html() -> str:
                 color: white;
                 padding: 2rem;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                position: relative;
+            }}
+            
+            .admin-link {{
+                position: absolute;
+                top: 2rem;
+                right: 2rem;
+                background: rgba(255,255,255,0.2);
+                color: white;
+                padding: 0.5rem 1rem;
+                border-radius: 6px;
+                text-decoration: none;
+                font-weight: 500;
+                transition: all 0.3s;
+            }}
+            
+            .admin-link:hover {{
+                background: rgba(255,255,255,0.3);
+                transform: translateY(-2px);
             }}
             
             .header h1 {{
@@ -361,6 +380,7 @@ def generate_dashboard_html() -> str:
     </head>
     <body>
         <div class="header">
+            <a href="/admin" class="admin-link">⚙️ Admin Panel</a>
             <h1>🏥 FQHC 3-Way Match Dashboard</h1>
             <p>Purchase Order Verification System</p>
         </div>
