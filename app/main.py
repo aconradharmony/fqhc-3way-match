@@ -25,6 +25,11 @@ anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 # Store processing results
 processing_history: List[Dict] = []
 
+# Create required directories if they don't exist
+os.makedirs("uploads", exist_ok=True)
+os.makedirs("static", exist_ok=True)
+os.makedirs("data", exist_ok=True)
+
 # Mount static files for uploads
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
