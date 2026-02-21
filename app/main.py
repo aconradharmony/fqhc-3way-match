@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from .po_matcher import POManager, MatchResult
 from .vision_prompt import get_vision_prompt
+from .admin_html import get_admin_html
 
 app = FastAPI(title="FQHC 3-Way Match System")
 
@@ -507,6 +508,56 @@ def generate_table_rows() -> str:
         """)
     
     return "\n".join(rows)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page():
+    """Admin page for uploading PO CSV"""
+    return get_admin_html()
+
+
+@app.post("/api/upload-po-csv")
+async def upload_po_csv(file: UploadFile = File(...)):
+    """Upload and load PO CSV file"""
+    try:
+        # Validate file type
+        if not file.filename.endswith('.csv'):
+            raise HTTPException(400, "File must be a CSV")
+        
+        # Save uploaded CSV
+        csv_path = Path("data/open_pos.csv")
+        contents = await file.read()
+        
+        with open(csv_path, "wb") as f:
+            f.write(contents)
+        
+        # Reload PO data
+        result = po_manager.load_from_csv(str(csv_path))
+        
+        return {
+            "success": True,
+            "message": f"✓ Loaded {result['po_count']} POs with {result['line_item_count']} line items from {result['vendor_count']} vendors",
+            "details": result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/po-stats")
+async def get_po_stats():
+    """Get current PO database statistics"""
+    vendor_set = set()
+    line_item_count = 0
+    
+    for po in po_manager.po_dict.values():
+        vendor_set.add(po.vendor_name)
+        line_item_count += len(po.line_items)
+    
+    return {
+        "po_count": len(po_manager.po_dict),
+        "line_item_count": line_item_count,
+        "vendor_count": len(vendor_set)
+    }
 
 
 if __name__ == "__main__":
