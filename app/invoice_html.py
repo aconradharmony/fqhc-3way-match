@@ -5,14 +5,14 @@ def get_invoice_html():
     sidebar_html = get_sidebar_html("invoices")
     sidebar_styles = get_sidebar_styles()
     
-    return f"""
+    return """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Accounts Payable - VerifyAP</title>
-    {sidebar_styles}
+    """ + sidebar_styles + """
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -186,7 +186,7 @@ def get_invoice_html():
     </style>
 </head>
 <body>
-    {sidebar_html}
+    """ + sidebar_html + """
     
     <div class="verifyap-main-content">
     <div class="header">
