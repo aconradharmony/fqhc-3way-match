@@ -2,6 +2,9 @@ def get_admin_html():
     """Generate modern admin page HTML for managing POs"""
     from .sidebar_component import get_sidebar_html, get_sidebar_styles
     
+    sidebar_html = get_sidebar_html("admin")
+    sidebar_styles = get_sidebar_styles()
+    
     return f"""
 <!DOCTYPE html>
 <html lang="en">
@@ -9,7 +12,7 @@ def get_admin_html():
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Purchase Orders - VerifyAP</title>
-    {get_sidebar_styles()}
+    {sidebar_styles}
     <style>
         /* CARDS */
         .card {{
@@ -199,7 +202,7 @@ def get_admin_html():
     </style>
 </head>
 <body>
-    {get_sidebar_html("admin")}
+    {sidebar_html}
     
     <div class="verifyap-main-content">
         <div class="container">

@@ -2,6 +2,9 @@ def get_invoice_html():
     """Generate modern invoice upload and management page"""
     from .sidebar_component import get_sidebar_html, get_sidebar_styles
     
+    sidebar_html = get_sidebar_html("invoices")
+    sidebar_styles = get_sidebar_styles()
+    
     return f"""
 <!DOCTYPE html>
 <html lang="en">
@@ -9,7 +12,7 @@ def get_invoice_html():
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Accounts Payable - VerifyAP</title>
-    {get_sidebar_styles()}
+    {sidebar_styles}
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -183,7 +186,7 @@ def get_invoice_html():
     </style>
 </head>
 <body>
-    {get_sidebar_html("invoices")}
+    {sidebar_html}
     
     <div class="verifyap-main-content">
     <div class="header">
