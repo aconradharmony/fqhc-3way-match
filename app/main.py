@@ -19,6 +19,7 @@ from .admin_html import get_admin_html
 from .invoice_html import get_invoice_html
 from .invoice_vision_prompt import get_invoice_vision_prompt
 from .invoice_matcher import ThreeWayMatcher, parse_invoice_from_vision
+from .sidebar_component import get_sidebar_html, get_sidebar_styles
 
 app = FastAPI(title="FQHC 3-Way Match System")
 
@@ -187,6 +188,7 @@ def generate_dashboard_html() -> str:
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>VerifyAP - Dashboard</title>
+        {get_sidebar_styles()}
         <style>
             * {{
                 margin: 0;
@@ -384,11 +386,11 @@ def generate_dashboard_html() -> str:
         </style>
     </head>
     <body>
+        {get_sidebar_html("dashboard")}
+        <div class="verifyap-main-content">
         <div class="header">
-            <a href="/admin" class="admin-link" style="right: 12rem;">⚙️ Admin</a>
-            <a href="/invoices" class="admin-link">💰 Invoices</a>
             <h1>✓ VerifyAP</h1>
-            <p>3-Way Match Automation</p>
+            <p>Dashboard</p>
         </div>
         
         <div class="stats">
@@ -474,6 +476,7 @@ def generate_dashboard_html() -> str:
                 }}
             }});
         </script>
+        </div>
     </body>
     </html>
     """
