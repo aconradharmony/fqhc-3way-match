@@ -242,37 +242,258 @@ def generate_dashboard_html() -> str:
                 grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
                 gap: 1.5rem;
                 padding: 2rem;
-                max-width: 1400px;
+                max-width: 1600px;
                 margin: 0 auto;
+                padding: 2rem;
+            }}
+            
+            /* STATS GRID */
+            .stats-grid {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                gap: 20px;
+                margin-bottom: 32px;
             }}
             
             .stat-card {{
                 background: white;
-                padding: 1.5rem;
                 border-radius: 12px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                border: 1px solid #E2E8F0;
+                padding: 24px;
+                transition: all 0.2s;
+                cursor: pointer;
+            }}
+            
+            .stat-card:hover {{
+                border-color: #4F46E5;
+                box-shadow: 0 4px 12px rgba(79, 70, 229, 0.1);
+                transform: translateY(-2px);
             }}
             
             .stat-label {{
-                font-size: 0.875rem;
-                color: #718096;
-                margin-bottom: 0.5rem;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
+                font-size: 13px;
+                font-weight: 500;
+                color: #64748B;
+                margin-bottom: 8px;
             }}
             
             .stat-value {{
-                font-size: 2.5rem;
+                font-size: 32px;
                 font-weight: 700;
-                color: #2d3748;
+                color: #0F172A;
+                margin-bottom: 4px;
             }}
             
             .stat-value.warning {{
-                color: #f56565;
+                color: #F59E0B;
+            }}
+            
+            .stat-value.success {{
+                color: #10B981;
+            }}
+            
+            .stat-change {{
+                font-size: 13px;
+                font-weight: 600;
+                color: #64748B;
+            }}
+            
+            /* PROCESS FLOW */
+            .process-flow {{
+                background: white;
+                border-radius: 12px;
+                border: 1px solid #E2E8F0;
+                padding: 32px;
+                margin-bottom: 32px;
+            }}
+            
+            .process-header {{
+                margin-bottom: 24px;
+            }}
+            
+            .process-title {{
+                font-size: 18px;
+                font-weight: 600;
+                color: #0F172A;
+                margin-bottom: 4px;
+            }}
+            
+            .process-subtitle {{
+                font-size: 14px;
+                color: #64748B;
+            }}
+            
+            .process-steps {{
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }}
+            
+            .process-step {{
+                flex: 1;
+                text-align: center;
+            }}
+            
+            .step-icon {{
+                width: 72px;
+                height: 72px;
+                margin: 0 auto 16px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 32px;
+                border: 3px solid;
+            }}
+            
+            .step-icon.complete {{
+                background: #D1FAE5;
+                border-color: #10B981;
+            }}
+            
+            .step-icon.active {{
+                background: #DBEAFE;
+                border-color: #4F46E5;
+                box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+                animation: pulse 2s infinite;
+            }}
+            
+            .step-icon.pending {{
+                background: #FEF3C7;
+                border-color: #F59E0B;
+            }}
+            
+            @keyframes pulse {{
+                0%, 100% {{ box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1); }}
+                50% {{ box-shadow: 0 0 0 8px rgba(79, 70, 229, 0.15); }}
+            }}
+            
+            .step-label {{
+                font-size: 14px;
+                font-weight: 600;
+                color: #0F172A;
+                margin-bottom: 8px;
+            }}
+            
+            .step-count {{
+                font-size: 28px;
+                font-weight: 700;
+                color: #4F46E5;
+                margin-bottom: 4px;
+            }}
+            
+            .step-status {{
+                font-size: 12px;
+                color: #64748B;
+            }}
+            
+            .process-arrow {{
+                font-size: 32px;
+                color: #CBD5E1;
+                padding: 0 16px;
+            }}
+            
+            /* QUICK ACTIONS */
+            .actions-grid {{
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+                margin-bottom: 32px;
+            }}
+            
+            .action-card {{
+                background: white;
+                border-radius: 12px;
+                border: 1px solid #E2E8F0;
+                padding: 24px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }}
+            
+            .action-card:hover {{
+                transform: translateY(-2px);
+                box-shadow: 0 8px 24px rgba(79, 70, 229, 0.15);
+                border-color: #4F46E5;
+            }}
+            
+            .action-icon {{
+                width: 56px;
+                height: 56px;
+                background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 28px;
+                margin-bottom: 16px;
+            }}
+            
+            .action-title {{
+                font-size: 18px;
+                font-weight: 600;
+                color: #0F172A;
+                margin-bottom: 8px;
+            }}
+            
+            .action-desc {{
+                font-size: 14px;
+                color: #64748B;
+                margin-bottom: 16px;
+            }}
+            
+            /* CARDS */
+            .card {{
+                background: white;
+                border-radius: 12px;
+                border: 1px solid #E2E8F0;
+                padding: 24px;
+                margin-bottom: 24px;
+            }}
+            
+            .card-header {{
+                margin-bottom: 20px;
+            }}
+            
+            .card-title {{
+                font-size: 18px;
+                font-weight: 600;
+                color: #0F172A;
+                margin-bottom: 4px;
+            }}
+            
+            .card-subtitle {{
+                font-size: 14px;
+                color: #64748B;
+            }}
+            
+            /* BADGES */
+            .badge {{
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 12px;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            
+            .badge-success {{
+                background: #D1FAE5;
+                color: #065F46;
+            }}
+            
+            .badge-warning {{
+                background: #FEF3C7;
+                color: #92400E;
+            }}
+            
+            .badge-error {{
+                background: #FEE2E2;
+                color: #991B1B;
             }}
             
             .container {{
-                max-width: 1400px;
+                max-width: 1600px;
                 margin: 0 auto;
                 padding: 2rem;
             }}
@@ -393,36 +614,127 @@ def generate_dashboard_html() -> str:
             <p>Dashboard</p>
         </div>
         
-        <div class="stats">
-            <div class="stat-card">
-                <div class="stat-label">Total Slips Processed</div>
-                <div class="stat-value">{len(processing_history)}</div>
+        <div class="container">
+            <!-- Process Flow -->
+            <div class="process-flow">
+                <div class="process-header">
+                    <h2 class="process-title">Purchase Order Lifecycle</h2>
+                    <p class="process-subtitle">Track orders from purchase to payment</p>
+                </div>
+                
+                <div class="process-steps">
+                    <div class="process-step">
+                        <div class="step-icon complete">📝</div>
+                        <div class="step-label">Ordered</div>
+                        <div class="step-count">{len(po_manager.po_dict)}</div>
+                        <div class="step-status">Open POs</div>
+                    </div>
+                    
+                    <div class="process-arrow">→</div>
+                    
+                    <div class="process-step">
+                        <div class="step-icon active">📦</div>
+                        <div class="step-label">Received</div>
+                        <div class="step-count">{len(processing_history)}</div>
+                        <div class="step-status">Packing Slips</div>
+                    </div>
+                    
+                    <div class="process-arrow">→</div>
+                    
+                    <div class="process-step">
+                        <div class="step-icon pending">💰</div>
+                        <div class="step-label">Invoiced</div>
+                        <div class="step-count">0</div>
+                        <div class="step-status">Awaiting Match</div>
+                    </div>
+                    
+                    <div class="process-arrow">→</div>
+                    
+                    <div class="process-step">
+                        <div class="step-icon complete">✓</div>
+                        <div class="step-label">Matched</div>
+                        <div class="step-count">0</div>
+                        <div class="step-status">Ready to Pay</div>
+                    </div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">Discrepancies Found</div>
-                <div class="stat-value warning">{discrepancy_count}</div>
+            
+            <!-- Stats Grid -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Transactions</div>
+                    <div class="stat-value">{len(processing_history)}</div>
+                    <div class="stat-change">Packing slips processed</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-label">Discrepancies Found</div>
+                    <div class="stat-value warning">{discrepancy_count}</div>
+                    <div class="stat-change">Items need attention</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-label">POs in Database</div>
+                    <div class="stat-value success">{len(po_manager.po_dict)}</div>
+                    <div class="stat-change">Active purchase orders</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-label">Match Rate</div>
+                    <div class="stat-value success">{100 - (discrepancy_count * 100 // max(len(processing_history), 1))}%</div>
+                    <div class="stat-change">Successfully matched</div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">POs in Database</div>
-                <div class="stat-value">{len(po_manager.po_dict)}</div>
+            
+            <!-- Quick Actions -->
+            <div class="actions-grid">
+                <div class="action-card" onclick="document.getElementById('upload-section').scrollIntoView({{behavior: 'smooth'}})">
+                    <div class="action-icon">📦</div>
+                    <h3 class="action-title">Log a Delivery</h3>
+                    <p class="action-desc">Upload packing slip photo to record goods received</p>
+                </div>
+                
+                <div class="action-card" onclick="window.location.href='/invoices'">
+                    <div class="action-icon">💰</div>
+                    <h3 class="action-title">Process Invoice</h3>
+                    <p class="action-desc">Upload vendor invoice for 3-way verification</p>
+                </div>
             </div>
+        
+        <div class="stats" style="display:none;">
+            <!-- Old stats hidden -->
         </div>
         
         <div class="container">
-            <div class="upload-section">
-                <h2 style="margin-bottom: 1rem;">Upload Packing Slip</h2>
-                <p style="color: #718096; margin-bottom: 1rem;">
-                    Upload a photo of the packing slip to verify against open purchase orders.
-                </p>
+            <div class="card" id="upload-section">
+                <div class="card-header">
+                    <h2 class="card-title">Upload Packing Slip</h2>
+                    <p class="card-subtitle">Take or upload a photo to verify against purchase orders</p>
+                </div>
                 <form id="uploadForm" enctype="multipart/form-data">
-                    <input type="file" id="fileInput" accept="image/*" style="margin-bottom: 1rem;">
-                    <button type="submit" class="upload-btn">📸 Upload & Process</button>
+                    <div style="border: 2px dashed #E2E8F0; border-radius: 12px; padding: 48px; text-align: center; background: #F8FAFC; cursor: pointer; transition: all 0.2s;" onclick="document.getElementById('fileInput').click()" onmouseover="this.style.borderColor='#4F46E5'; this.style.background='#EEF2FF'" onmouseout="this.style.borderColor='#E2E8F0'; this.style.background='#F8FAFC'">
+                        <div style="font-size: 48px; margin-bottom: 16px;">📦</div>
+                        <p style="font-size: 16px; font-weight: 600; color: #0F172A; margin-bottom: 8px;">
+                            Drop packing slip photo here
+                        </p>
+                        <p style="font-size: 14px; color: #64748B; margin-bottom: 16px;">
+                            or click to browse • Supports JPG, PNG, HEIC
+                        </p>
+                        <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                        <button type="submit" class="upload-btn" style="background: #4F46E5; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#4338CA'; this.style.transform='translateY(-1px)'" onmouseout="this.style.background='#4F46E5'; this.style.transform='translateY(0)'">
+                            📸 Upload & Process
+                        </button>
+                    </div>
                 </form>
-                <div id="uploadStatus" style="margin-top: 1rem;"></div>
+                <div id="uploadStatus" style="margin-top: 16px;"></div>
             </div>
             
-            <div class="results-table">
-                <table>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Recent Activity</h2>
+                </div>
+                <div style="overflow-x: auto; border-radius: 12px; border: 1px solid #E2E8F0;">
+                <table style="width: 100%; border-collapse: collapse;">
                     <thead>
                         <tr>
                             <th>Image</th>
@@ -437,6 +749,7 @@ def generate_dashboard_html() -> str:
                         {generate_table_rows()}
                     </tbody>
                 </table>
+                </div>
             </div>
         </div>
         
@@ -489,8 +802,14 @@ def generate_table_rows() -> str:
     if not processing_history:
         return """
         <tr>
-            <td colspan="6" class="no-data">
-                No packing slips processed yet. Upload one to get started! 📦
+            <td colspan="6" style="text-align: center; padding: 64px 32px;">
+                <div style="font-size: 64px; margin-bottom: 16px; opacity: 0.3;">📋</div>
+                <div style="font-size: 18px; font-weight: 600; color: #0F172A; margin-bottom: 8px;">
+                    No packing slips processed yet
+                </div>
+                <div style="font-size: 14px; color: #64748B;">
+                    Upload one above to get started!
+                </div>
             </td>
         </tr>
         """
@@ -503,27 +822,29 @@ def generate_table_rows() -> str:
         po_number = vision_data.get("po_number", "N/A")
         vendor = vision_data.get("vendor_name", "N/A")
         
-        # Determine status badge
+        # Determine status badge with modern styling
         if match_result.get("po_found"):
             if record.get("has_discrepancies"):
-                status_badge = '<span class="badge warning">⚠ Discrepancies</span>'
+                status_badge = '<span class="badge badge-warning">⚠️ DISCREPANCY</span>'
             else:
-                status_badge = '<span class="badge success">✓ Match</span>'
+                status_badge = '<span class="badge badge-success">✓ MATCHED</span>'
         else:
-            status_badge = '<span class="badge warning">✗ PO Not Found</span>'
+            status_badge = '<span class="badge badge-error">❌ NO MATCH</span>'
         
         # Generate discrepancy list
         discrepancies = match_result.get("discrepancies", [])
         discrepancy_html = ""
         if discrepancies:
-            discrepancy_html = "<ul class='discrepancy-list'>"
-            for disc in discrepancies:
+            discrepancy_html = "<ul style='margin: 0; padding-left: 20px; font-size: 13px;'>"
+            for disc in discrepancies[:3]:  # Show max 3
                 discrepancy_html += f"<li>{disc}</li>"
+            if len(discrepancies) > 3:
+                discrepancy_html += f"<li>...and {len(discrepancies) - 3} more</li>"
             discrepancy_html += "</ul>"
         
         # Image preview
         filepath = record.get("filepath", "")
-        image_html = f'<img src="/{filepath}" class="image-preview" alt="Packing slip">'
+        image_html = f'<img src="/{filepath}" class="image-preview" alt="Packing slip">' if filepath else "📄"
         
         rows.append(f"""
         <tr>
@@ -535,6 +856,7 @@ def generate_table_rows() -> str:
             <td>{discrepancy_html if discrepancy_html else "—"}</td>
         </tr>
         """)
+    
     
     return "\n".join(rows)
 
