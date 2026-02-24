@@ -1,12 +1,15 @@
 def get_invoice_html():
-    """Generate invoice upload and management page"""
-    return """
+    """Generate modern invoice upload and management page"""
+    from .sidebar_component import get_sidebar_html, get_sidebar_styles
+    
+    return f"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Invoice Management - FQHC 3-Way Match</title>
+    <title>Accounts Payable - VerifyAP</title>
+    {get_sidebar_styles()}
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -180,10 +183,12 @@ def get_invoice_html():
     </style>
 </head>
 <body>
+    {get_sidebar_html("invoices")}
+    
+    <div class="verifyap-main-content">
     <div class="header">
-        <a href="/" class="dashboard-link">📊 Dashboard</a>
-        <h1>💰 Invoice Management</h1>
-        <p>Upload and verify invoices against POs and packing slips</p>
+        <h1 style="font-size: 28px; font-weight: 700; color: white; margin-bottom: 8px;">Accounts Payable</h1>
+        <p style="color: rgba(255,255,255,0.9); font-size: 14px;">Invoice verification & 3-way matching</p>
     </div>
 
     <div class="container">
@@ -367,6 +372,7 @@ def get_invoice_html():
         // Load on page load
         loadInvoices();
     </script>
+    </div>
 </body>
 </html>
     """
