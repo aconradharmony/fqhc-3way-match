@@ -1,381 +1,331 @@
+"""
+VerifyAP - Accounts Payable / Invoice Processing Page
+Purpose: Upload vendor invoices for 3-way match verification.
+"""
+
+from .sidebar_component import get_sidebar_html, get_sidebar_styles
+
+
 def get_invoice_html():
-    """Generate modern invoice upload and management page"""
-    from .sidebar_component import get_sidebar_html, get_sidebar_styles
-    
+    """Generate the Accounts Payable (invoice) page HTML."""
+
     sidebar_html = get_sidebar_html("invoices")
     sidebar_styles = get_sidebar_styles()
-    
-    return """
-<!DOCTYPE html>
+
+    html = (
+        """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Accounts Payable - VerifyAP</title>
-    """ + sidebar_styles + """
+    <title>VerifyAP - Accounts Payable</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    """
+        + sidebar_styles
+        + """
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f7fa;
-            color: #2d3748;
-        }
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        body { font-family: 'Inter', -apple-system, sans-serif; background: #F8FAFC; color: #1E293B; }
+
+        .page-header {
+            background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 50%, #9333EA 100%);
+            padding: 36px 40px 32px 40px;
             color: white;
-            padding: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            position: relative;
         }
-        .dashboard-link {
-            position: absolute;
-            top: 2rem;
-            right: 2rem;
-            background: rgba(255,255,255,0.2);
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            text-decoration: none;
-            font-weight: 500;
-            transition: all 0.3s;
+        .page-header h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+        .page-header p { margin-top: 4px; font-size: 14px; color: rgba(255,255,255,0.75); }
+
+        .page-body { padding: 32px 40px; max-width: 960px; }
+
+        .upload-card {
+            background: white; border-radius: 16px; border: 1px solid #E2E8F0;
+            padding: 32px; margin-bottom: 28px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         }
-        .dashboard-link:hover {
-            background: rgba(255,255,255,0.3);
-            transform: translateY(-2px);
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        }
-        h2 {
-            color: #2d3748;
-            font-size: 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-        .upload-area {
-            border: 2px dashed #cbd5e0;
-            border-radius: 8px;
-            padding: 3rem;
-            text-align: center;
-            background: #f7fafc;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        .upload-area:hover {
-            border-color: #667eea;
-            background: #edf2f7;
-        }
-        .upload-area.dragover {
-            border-color: #667eea;
-            background: #e6fffa;
-        }
-        input[type="file"] {
-            display: none;
-        }
-        .btn {
-            background: #667eea;
-            color: white;
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 6px;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-top: 1rem;
-        }
-        .btn:hover {
-            background: #5a67d8;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        }
-        .btn:disabled {
-            background: #cbd5e0;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .message {
-            padding: 1rem;
-            border-radius: 6px;
-            margin-top: 1rem;
-            display: none;
-        }
-        .message.success {
-            background: #c6f6d5;
-            color: #22543d;
-            border-left: 4px solid #48bb78;
-        }
-        .message.error {
-            background: #fed7d7;
-            color: #742a2a;
-            border-left: 4px solid #f56565;
-        }
-        .message.warning {
-            background: #feebc8;
-            color: #744210;
-            border-left: 4px solid #ed8936;
-        }
+        .upload-card h2 { font-size: 18px; font-weight: 700; color: #0F172A; margin-bottom: 4px; }
+        .upload-card .subtitle { font-size: 13px; color: #64748B; margin-bottom: 24px; }
+
         .info-box {
-            background: #ebf8ff;
-            border-left: 4px solid #4299e1;
-            padding: 1rem;
-            border-radius: 6px;
-            margin-bottom: 2rem;
+            background: #FFF7ED; border-left: 4px solid #F59E0B;
+            border-radius: 0 8px 8px 0; padding: 16px 20px; margin-bottom: 20px;
         }
-        .info-box h3 {
-            color: #2c5282;
-            font-size: 1rem;
-            margin-bottom: 0.5rem;
+        .info-box-title { font-size: 13px; font-weight: 700; color: #D97706; margin-bottom: 4px; }
+        .info-box-text { font-size: 13px; color: #92400E; line-height: 1.6; }
+
+        .drop-zone {
+            border: 2px dashed #CBD5E1; border-radius: 12px;
+            padding: 48px 24px; text-align: center; background: #F8FAFC;
+            cursor: pointer; transition: all 0.2s ease; margin-bottom: 20px;
         }
-        .info-box p {
-            color: #2c5282;
-            font-size: 0.9rem;
+        .drop-zone:hover, .drop-zone.drag-over { border-color: #4F46E5; background: #EEF2FF; }
+        .drop-zone-icon { font-size: 48px; margin-bottom: 12px; }
+        .drop-zone-text { font-size: 15px; font-weight: 600; color: #334155; margin-bottom: 4px; }
+        .drop-zone-sub { font-size: 13px; color: #94A3B8; }
+
+        .file-types {
+            display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap;
         }
-        .invoice-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 1.5rem;
+        .file-type-badge {
+            display: inline-block; padding: 4px 10px; border-radius: 6px;
+            font-size: 11px; font-weight: 600; background: #EEF2FF; color: #4F46E5;
+            text-transform: uppercase;
         }
-        .invoice-table th {
-            background: #f7fafc;
-            padding: 0.75rem;
-            text-align: left;
-            font-weight: 600;
-            color: #4a5568;
-            border-bottom: 2px solid #e2e8f0;
+
+        .selected-file {
+            display: none; align-items: center; gap: 10px;
+            padding: 12px 16px; background: #EEF2FF; border-radius: 8px;
+            margin-bottom: 16px; font-size: 13px; color: #4F46E5; font-weight: 500;
         }
-        .invoice-table td {
-            padding: 0.75rem;
-            border-bottom: 1px solid #e2e8f0;
+        .selected-file.show { display: flex; }
+        .selected-file-remove {
+            margin-left: auto; cursor: pointer; color: #94A3B8; font-size: 16px;
         }
-        .status-badge {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 12px;
-            font-size: 0.85rem;
-            font-weight: 600;
+        .selected-file-remove:hover { color: #EF4444; }
+
+        .upload-btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 12px 28px;
+            background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);
+            color: white; border: none; border-radius: 8px;
+            font-size: 14px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(79,70,229,0.3);
         }
-        .status-badge.approved {
-            background: #c6f6d5;
-            color: #22543d;
+        .upload-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(79,70,229,0.4); }
+        .upload-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        .file-input { display: none; }
+
+        .loading-spinner { display: none; text-align: center; padding: 32px; }
+        .loading-spinner.show { display: block; }
+        .spinner {
+            width: 40px; height: 40px; border: 3px solid #E2E8F0;
+            border-top: 3px solid #4F46E5; border-radius: 50%;
+            animation: spin 0.8s linear infinite; margin: 0 auto 12px auto;
         }
-        .status-badge.review {
-            background: #feebc8;
-            color: #744210;
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { font-size: 14px; color: #64748B; font-weight: 500; }
+
+        .error-msg {
+            display: none; padding: 16px; background: #FEF2F2;
+            border: 1px solid #FECACA; border-radius: 8px;
+            color: #DC2626; font-size: 13px; margin-top: 12px;
         }
-        .status-badge.reject {
-            background: #fed7d7;
-            color: #742a2a;
+        .error-msg.show { display: block; }
+
+        .results-area { display: none; margin-top: 28px; }
+        .results-area.show { display: block; }
+
+        .result-card {
+            background: white; border-radius: 12px; border: 1px solid #E2E8F0;
+            padding: 24px; margin-bottom: 16px;
         }
-        .status-badge.pending {
-            background: #e6fffa;
-            color: #234e52;
+        .result-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+
+        .result-badge {
+            display: inline-block; padding: 4px 12px; border-radius: 20px;
+            font-size: 12px; font-weight: 700; text-transform: uppercase;
         }
-        .empty-state {
-            text-align: center;
-            padding: 3rem;
-            color: #a0aec0;
+        .badge-approve { background: #ECFDF5; color: #059669; }
+        .badge-review { background: #FFFBEB; color: #D97706; }
+        .badge-reject { background: #FEF2F2; color: #DC2626; }
+
+        .result-table {
+            width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px;
+        }
+        .result-table th {
+            text-align: left; padding: 10px 12px; background: #F8FAFC;
+            border-bottom: 2px solid #E2E8F0; font-weight: 600; color: #64748B;
+            font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .result-table td {
+            padding: 10px 12px; border-bottom: 1px solid #F1F5F9; color: #334155;
         }
     </style>
 </head>
 <body>
-    """ + sidebar_html + """
-    
+    """
+        + sidebar_html
+        + """
     <div class="verifyap-main-content">
-    <div class="header">
-        <h1 style="font-size: 28px; font-weight: 700; color: white; margin-bottom: 8px;">Accounts Payable</h1>
-        <p style="color: rgba(255,255,255,0.9); font-size: 14px;">Invoice verification & 3-way matching</p>
-    </div>
-
-    <div class="container">
-        <div class="card">
-            <h2>📤 Upload Invoice</h2>
-            
-            <div class="info-box">
-                <h3>💡 How 3-Way Matching Works</h3>
-                <p>The system compares your invoice against the PO (what you ordered) and packing slip (what you received). 
-                   It will flag discrepancies like price differences, quantity mismatches, or items you're being billed 
-                   for that you didn't receive.</p>
-            </div>
-
-            <div class="upload-area" id="upload-area">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="margin: 0 auto; color: #a0aec0;">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                    <line x1="12" y1="18" x2="12" y2="12"></line>
-                    <line x1="9" y1="15" x2="15" y2="15"></line>
-                </svg>
-                <p style="margin-top: 1rem; color: #4a5568; font-weight: 500;">Drop invoice PDF or photo here</p>
-                <p style="margin-top: 0.5rem; color: #a0aec0; font-size: 0.9rem;">Accepts PDF, JPG, PNG files</p>
-                <input type="file" id="file-input" accept=".pdf,.jpg,.jpeg,.png">
-            </div>
-
-            <button class="btn" id="upload-btn" disabled>Upload Invoice</button>
-            
-            <div class="message" id="message"></div>
+        <div class="page-header">
+            <h1>&#128176; Accounts Payable</h1>
+            <p>Upload vendor invoices for 3-way match verification</p>
         </div>
 
-        <div class="card">
-            <h2>📋 Recent Invoices</h2>
-            <table class="invoice-table" id="invoice-table">
-                <thead>
-                    <tr>
-                        <th>Invoice #</th>
-                        <th>PO #</th>
-                        <th>Vendor</th>
-                        <th>Amount</th>
-                        <th>Status</th>
-                        <th>Uploaded</th>
-                    </tr>
-                </thead>
-                <tbody id="invoice-tbody">
-                    <tr>
-                        <td colspan="6" class="empty-state">
-                            No invoices uploaded yet. Upload one above to get started! 📄
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="page-body">
+            <div class="upload-card">
+                <h2>Process Invoice</h2>
+                <p class="subtitle">Upload a vendor invoice to verify against purchase orders and delivery receipts</p>
+
+                <div class="info-box">
+                    <div class="info-box-title">&#9888;&#65039; 3-Way Match Verification</div>
+                    <div class="info-box-text">
+                        Each invoice is checked against: (1) the Purchase Order to verify pricing and quantities ordered,
+                        and (2) the Delivery Receipt to confirm goods were received. Upload POs and packing slips first for best results.
+                    </div>
+                </div>
+
+                <input type="file" id="fileInput" class="file-input"
+                       accept=".pdf,.jpg,.jpeg,.png">
+
+                <div class="drop-zone" id="dropZone">
+                    <div class="drop-zone-icon">&#128176;</div>
+                    <div class="drop-zone-text">Drop invoice here</div>
+                    <div class="drop-zone-sub">or click to browse</div>
+                    <div class="file-types">
+                        <span class="file-type-badge">PDF</span>
+                        <span class="file-type-badge">JPG</span>
+                        <span class="file-type-badge">PNG</span>
+                    </div>
+                </div>
+
+                <div class="selected-file" id="selectedFile">
+                    <span>&#128196;</span>
+                    <span id="selectedFileName">invoice.pdf</span>
+                    <span class="selected-file-remove" id="removeFile">&times;</span>
+                </div>
+
+                <button class="upload-btn" id="uploadBtn" disabled>
+                    &#128176; Upload &amp; Verify Invoice
+                </button>
+
+                <div class="loading-spinner" id="loadingSpinner">
+                    <div class="spinner"></div>
+                    <div class="loading-text">Analyzing invoice and performing 3-way match...</div>
+                </div>
+                <div class="error-msg" id="errorMsg"></div>
+            </div>
+
+            <div class="results-area" id="resultsArea"></div>
         </div>
     </div>
 
     <script>
-        const uploadArea = document.getElementById('upload-area');
-        const fileInput = document.getElementById('file-input');
-        const uploadBtn = document.getElementById('upload-btn');
-        const message = document.getElementById('message');
-        let selectedFile = null;
+        var selectedFileData = null;
+        var dropZone = document.getElementById('dropZone');
+        var fileInput = document.getElementById('fileInput');
+        var uploadBtn = document.getElementById('uploadBtn');
+        var selectedFile = document.getElementById('selectedFile');
+        var selectedFileName = document.getElementById('selectedFileName');
+        var removeFileBtn = document.getElementById('removeFile');
+        var loadingSpinner = document.getElementById('loadingSpinner');
+        var errorMsg = document.getElementById('errorMsg');
+        var resultsArea = document.getElementById('resultsArea');
 
-        // Click to browse
-        uploadArea.addEventListener('click', () => fileInput.click());
-
-        // Drag and drop
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
+        dropZone.addEventListener('click', function() { fileInput.click(); });
+        dropZone.addEventListener('dragover', function(e) {
+            e.preventDefault(); dropZone.classList.add('drag-over');
+        });
+        dropZone.addEventListener('dragleave', function() { dropZone.classList.remove('drag-over'); });
+        dropZone.addEventListener('drop', function(e) {
+            e.preventDefault(); dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', function() {
+            if (fileInput.files.length) handleFile(fileInput.files[0]);
         });
 
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('dragover');
-        });
-
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                selectedFile = files[0];
-                fileInput.files = files;
-                updateUI();
-            }
-        });
-
-        // File selected
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                selectedFile = e.target.files[0];
-                updateUI();
-            }
-        });
-
-        function updateUI() {
-            if (selectedFile) {
-                uploadArea.querySelector('p').textContent = `Selected: ${selectedFile.name}`;
-                uploadBtn.disabled = false;
-            }
+        function handleFile(file) {
+            selectedFileData = file;
+            selectedFileName.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+            selectedFile.classList.add('show');
+            dropZone.style.display = 'none';
+            uploadBtn.disabled = false;
+            errorMsg.classList.remove('show');
         }
 
-        // Upload
-        uploadBtn.addEventListener('click', async () => {
-            if (!selectedFile) return;
-
+        removeFileBtn.addEventListener('click', function() {
+            selectedFileData = null;
+            selectedFile.classList.remove('show');
+            dropZone.style.display = 'block';
             uploadBtn.disabled = true;
-            uploadBtn.textContent = 'Processing...';
-            message.style.display = 'none';
-
-            const formData = new FormData();
-            formData.append('file', selectedFile);
-
-            try {
-                const response = await fetch('/api/upload-invoice', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    if (data.match_status === 'APPROVE') {
-                        message.className = 'message success';
-                        message.textContent = `✓ ${data.message}`;
-                    } else if (data.match_status === 'REVIEW') {
-                        message.className = 'message warning';
-                        message.textContent = `⚠ ${data.message}`;
-                    } else {
-                        message.className = 'message error';
-                        message.textContent = `✗ ${data.message}`;
-                    }
-                    message.style.display = 'block';
-                    
-                    // Reload invoice list
-                    setTimeout(loadInvoices, 1000);
-                    
-                    // Reset
-                    selectedFile = null;
-                    fileInput.value = '';
-                    uploadArea.querySelector('p').textContent = 'Drop invoice PDF or photo here';
-                } else {
-                    throw new Error(data.detail || 'Upload failed');
-                }
-            } catch (error) {
-                message.className = 'message error';
-                message.textContent = `Error: ${error.message}`;
-                message.style.display = 'block';
-            } finally {
-                uploadBtn.disabled = false;
-                uploadBtn.textContent = 'Upload Invoice';
-            }
+            fileInput.value = '';
         });
 
-        // Load invoices
-        async function loadInvoices() {
-            try {
-                const response = await fetch('/api/invoices');
-                const invoices = await response.json();
-                
-                const tbody = document.getElementById('invoice-tbody');
-                
-                if (invoices.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No invoices uploaded yet. Upload one above to get started! 📄</td></tr>';
-                    return;
-                }
-                
-                tbody.innerHTML = invoices.map(inv => `
-                    <tr>
-                        <td><strong>${inv.invoice_number || 'N/A'}</strong></td>
-                        <td>${inv.po_number || 'N/A'}</td>
-                        <td>${inv.vendor || 'N/A'}</td>
-                        <td>$${inv.total_amount ? inv.total_amount.toFixed(2) : '0.00'}</td>
-                        <td><span class="status-badge ${inv.match_status.toLowerCase()}">${inv.match_status}</span></td>
-                        <td>${new Date(inv.timestamp).toLocaleString()}</td>
-                    </tr>
-                `).join('');
-            } catch (error) {
-                console.error('Failed to load invoices:', error);
-            }
-        }
+        uploadBtn.addEventListener('click', function() {
+            if (!selectedFileData) return;
+            uploadBtn.disabled = true;
+            loadingSpinner.classList.add('show');
+            errorMsg.classList.remove('show');
+            resultsArea.classList.remove('show');
 
-        // Load on page load
-        loadInvoices();
+            var formData = new FormData();
+            formData.append('file', selectedFileData);
+
+            fetch('/api/upload-invoice', { method: 'POST', body: formData })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    loadingSpinner.classList.remove('show');
+                    if (data.success) {
+                        displayResults(data);
+                    } else {
+                        errorMsg.textContent = 'Error: ' + (data.error || 'Unknown error');
+                        errorMsg.classList.add('show');
+                    }
+                    uploadBtn.disabled = false;
+                })
+                .catch(function(err) {
+                    loadingSpinner.classList.remove('show');
+                    errorMsg.textContent = 'Network error: ' + err.message;
+                    errorMsg.classList.add('show');
+                    uploadBtn.disabled = false;
+                });
+        });
+
+        function displayResults(data) {
+            var d = data.data || {};
+            var m = data.match || {};
+            var status = (m.status || 'REVIEW').toUpperCase();
+            var badgeClass = status === 'APPROVE' ? 'badge-approve' : status === 'REJECT' ? 'badge-reject' : 'badge-review';
+
+            var html = '<div class="result-card">';
+            html += '<h3>3-Way Match Result <span class="result-badge ' + badgeClass + '">' + status + '</span></h3>';
+
+            html += '<table class="result-table">';
+            html += '<tr><th>Field</th><th>Value</th></tr>';
+            html += '<tr><td>Invoice Number</td><td>' + (d.invoice_number || 'N/A') + '</td></tr>';
+            html += '<tr><td>PO Number</td><td>' + (d.po_number || 'N/A') + '</td></tr>';
+            html += '<tr><td>Vendor</td><td>' + (d.vendor || 'N/A') + '</td></tr>';
+            html += '<tr><td>Invoice Date</td><td>' + (d.invoice_date || 'N/A') + '</td></tr>';
+            html += '<tr><td>Total Amount</td><td>$' + (d.total || 'N/A') + '</td></tr>';
+            html += '<tr><td>Packing Slip on File</td><td>' + (m.has_packing_slip ? 'Yes' : 'No') + '</td></tr>';
+            html += '</table>';
+
+            if (d.items && d.items.length > 0) {
+                html += '<h3 style="margin-top:20px;">Line Items</h3>';
+                html += '<table class="result-table">';
+                html += '<tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr>';
+                for (var i = 0; i < d.items.length; i++) {
+                    var item = d.items[i];
+                    html += '<tr>';
+                    html += '<td>' + (item.description || 'N/A') + '</td>';
+                    html += '<td>' + (item.quantity || '-') + '</td>';
+                    html += '<td>$' + (item.unit_price || '-') + '</td>';
+                    html += '<td>$' + (item.total || '-') + '</td>';
+                    html += '</tr>';
+                }
+                html += '</table>';
+            }
+
+            if (m.discrepancies && m.discrepancies.length > 0) {
+                html += '<h3 style="margin-top:20px;">Discrepancies</h3>';
+                html += '<table class="result-table">';
+                html += '<tr><th>Issue</th><th>Details</th></tr>';
+                for (var j = 0; j < m.discrepancies.length; j++) {
+                    html += '<tr>';
+                    html += '<td><span class="result-badge badge-reject">' + (m.discrepancies[j].type || 'Issue') + '</span></td>';
+                    html += '<td>' + (m.discrepancies[j].message || '') + '</td>';
+                    html += '</tr>';
+                }
+                html += '</table>';
+            }
+
+            html += '</div>';
+            resultsArea.innerHTML = html;
+            resultsArea.classList.add('show');
+        }
     </script>
-    </div>
 </body>
-</html>
-    """
+</html>"""
+    )
+
+    return html

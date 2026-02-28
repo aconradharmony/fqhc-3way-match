@@ -1,49 +1,57 @@
 """
-Vision prompt for extracting invoice data
+VerifyAP - Invoice Vision Prompt
+Purpose: Claude Vision prompt for extracting data from vendor invoices.
 """
 
+
 def get_invoice_vision_prompt():
-    """Returns the prompt for Claude to extract invoice data"""
-    return """You are analyzing an invoice image. Extract ALL information in JSON format.
+    """Return the prompt for invoice OCR extraction."""
 
-CRITICAL: Return ONLY valid JSON, no markdown, no explanation, no preamble.
+    return """You are an expert accounts payable document processor. Analyze this vendor invoice and extract ALL data into structured JSON.
 
-Extract:
+Extract the following:
+
+1. **invoice_number** — The invoice number
+2. **po_number** — The purchase order number referenced on the invoice
+3. **vendor** — The vendor/supplier name
+4. **vendor_address** — Vendor address if visible
+5. **invoice_date** — Invoice date
+6. **due_date** — Payment due date if shown
+7. **items** — Array of line items, each with:
+   - **description** — Item description
+   - **quantity** — Quantity billed (as a number)
+   - **unit_price** — Unit price (as a number)
+   - **total** — Line total (as a number)
+8. **subtotal** — Subtotal amount
+9. **tax** — Tax amount if shown
+10. **shipping** — Shipping charges if shown
+11. **total** — Grand total / amount due
+12. **payment_terms** — Payment terms if shown (e.g., Net 30)
+13. **notes** — Any special notes
+
+Return ONLY valid JSON. No explanation or markdown.
+If a field is not found, use null.
+
+Example:
 {
-  "invoice_number": "exact invoice number from document",
-  "po_number": "PO number if referenced (look for 'PO#', 'Purchase Order', etc.)",
-  "vendor": "company name issuing the invoice",
-  "invoice_date": "date in YYYY-MM-DD format if visible",
-  "due_date": "payment due date if shown",
-  "bill_to": "customer/facility name being billed",
-  "line_items": [
-    {
-      "description": "item description",
-      "quantity": numeric quantity,
-      "unit_price": numeric price per unit,
-      "line_total": numeric line total
-    }
-  ],
-  "subtotal": numeric subtotal before tax/shipping,
-  "tax_amount": numeric tax amount (0 if not shown),
-  "shipping_amount": numeric shipping/freight (0 if not shown),
-  "total_amount": numeric final total amount due,
-  "payment_terms": "net 30, net 60, etc.",
-  "notes": ["any special notes, discounts, or important details"]
-}
-
-EXTRACTION RULES:
-1. For line_items: Extract EVERY line item visible
-2. Include item codes/SKUs in description if present
-3. Calculate line_total as quantity × unit_price if not explicitly shown
-4. If subtotal not shown, calculate as sum of all line_totals
-5. Ensure total_amount matches the invoice total (subtotal + tax + shipping)
-6. Look carefully for PO numbers - they may be in header, footer, or line items
-7. All numeric values must be numbers, not strings
-8. Return null for fields not found (don't guess)
-
-VALIDATION:
-- Verify: subtotal + tax + shipping = total_amount (within rounding)
-- Verify: sum of all line_totals = subtotal (within rounding)
-
-Return ONLY the JSON object."""
+    "invoice_number": "INV-2024-0150",
+    "po_number": "PO-2024-001",
+    "vendor": "Medical Supply Co",
+    "vendor_address": "123 Main St, City, ST 12345",
+    "invoice_date": "2024-01-25",
+    "due_date": "2024-02-24",
+    "items": [
+        {
+            "description": "Exam Gloves, Nitrile, Medium",
+            "quantity": 100,
+            "unit_price": 0.12,
+            "total": 12.00
+        }
+    ],
+    "subtotal": 12.00,
+    "tax": 0.96,
+    "shipping": 5.00,
+    "total": 17.96,
+    "payment_terms": "Net 30",
+    "notes": null
+}"""

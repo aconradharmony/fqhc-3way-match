@@ -1,1091 +1,545 @@
 """
-FQHC 3-Way Match System - Main FastAPI Application
-Handles packing slip uploads, vision processing, and PO matching
+VerifyAP - Main FastAPI Application & Dashboard
+Updated: Feb 26, 2026 — Dashboard is now analytics-only (lifecycle + stats).
+Packing slip upload moved to /deliveries. PO upload generalized on /admin.
 """
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+import os
+import json
+import base64
+from fastapi import FastAPI, UploadFile, File, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-import anthropic
-import os
-import base64
-from datetime import datetime
-import json
-from pathlib import Path
-from typing import Dict, List, Optional
-from .po_matcher import POManager, MatchResult
-from .vision_prompt import get_vision_prompt
-from .admin_html import get_admin_html
-from .invoice_html import get_invoice_html
-from .invoice_vision_prompt import get_invoice_vision_prompt
-from .invoice_matcher import ThreeWayMatcher, parse_invoice_from_vision
-from .sidebar_component import get_sidebar_html, get_sidebar_styles
 
-app = FastAPI(title="FQHC 3-Way Match System")
+# --- App Setup ---
+app = FastAPI(title="VerifyAP", description="AI-Powered 3-Way Match for Accounts Payable")
 
-# Initialize components
-po_manager = POManager()
-anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-three_way_matcher = ThreeWayMatcher()
-
-# Store processing results
-processing_history: List[Dict] = []
-invoice_history: List[Dict] = []
-
-# Create required directories if they don't exist
+# Auto-create directories (Render filesystem starts empty)
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("static", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 
-# Mount static files for uploads
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# --- In-Memory Storage ---
+purchase_orders = {}
+packing_slips = []
+invoices = []
+match_results = []
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Load PO data on startup"""
-    csv_path = Path("data/open_pos.csv")
-    if csv_path.exists():
-        po_manager.load_from_csv(str(csv_path))
-        print(f"✓ Loaded {len(po_manager.po_dict)} POs from CSV")
-    else:
-        print("⚠ No CSV file found. Please add data/open_pos.csv")
+# --- Import Page Modules ---
+from .admin_html import get_admin_html, handle_csv_upload, handle_po_pdf_upload
+from .invoice_html import get_invoice_html
+from .deliveries_html import get_deliveries_html
+from .sidebar_component import get_sidebar_html, get_sidebar_styles
+from .po_matcher import match_packing_slip
+from .invoice_matcher import match_invoice
 
 
-@app.post("/api/upload-packing-slip")
-async def upload_packing_slip(file: UploadFile = File(...)):
+# --- Dashboard HTML ---
+def get_dashboard_html():
+    """Generate the dashboard page — analytics command center."""
+
+    sidebar_html = get_sidebar_html("dashboard")
+    sidebar_styles = get_sidebar_styles()
+
+    # Calculate stats from in-memory data
+    total_transactions = len(packing_slips)
+    total_pos = len(purchase_orders)
+    discrepancies = sum(1 for s in packing_slips if s.get("has_discrepancy", False))
+    matched_count = total_transactions - discrepancies if total_transactions > 0 else 0
+    match_rate = round((matched_count / total_transactions) * 100) if total_transactions > 0 else 100
+
+    # Lifecycle counts
+    open_pos = total_pos
+    received_count = len(packing_slips)
+    invoiced_count = len(invoices)
+    matched_final = len([r for r in match_results if r.get("status") == "APPROVE"])
+
+    html = (
+        """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VerifyAP - Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     """
-    Endpoint to receive packing slip images from clinic staff
-    Simulates nurse texting/emailing a photo
-    """
-    try:
-        # Validate file type
-        if not file.content_type.startswith("image/"):
-            raise HTTPException(400, "File must be an image")
-        
-        # Save uploaded file
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{timestamp}_{file.filename}"
-        filepath = Path("uploads") / filename
-        
-        content = await file.read()
-        with open(filepath, "wb") as f:
-            f.write(content)
-        
-        # Process with Claude Vision
-        vision_result = await process_with_vision(content, file.content_type)
-        
-        # Match against PO database
-        match_result = po_manager.match_packing_slip(vision_result)
-        
-        # Store result
-        result = {
-            "id": len(processing_history) + 1,
-            "timestamp": timestamp,
-            "filename": filename,
-            "filepath": str(filepath),
-            "vision_data": vision_result,
-            "match_result": match_result.to_dict(),
-            "has_discrepancies": match_result.has_discrepancies
+        + sidebar_styles
+        + """
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', -apple-system, sans-serif; background: #F8FAFC; color: #1E293B; }
+
+        .dashboard-header {
+            background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 50%, #9333EA 100%);
+            padding: 36px 40px 32px 40px;
+            color: white;
         }
-        processing_history.append(result)
-        
-        return JSONResponse(content={
-            "success": True,
-            "result": result
-        })
-        
-    except Exception as e:
-        raise HTTPException(500, f"Processing error: {str(e)}")
-
-
-async def process_with_vision(image_content: bytes, content_type: str) -> Dict:
-    """
-    Process packing slip image with Claude Vision API
-    Handles low-quality clinic photos with shadows, blur, etc.
-    """
-    # Encode image to base64
-    base64_image = base64.standard_b64encode(image_content).decode("utf-8")
-    
-    # Determine media type
-    media_type = content_type if content_type else "image/jpeg"
-    
-    # Call Claude Vision API with specialized prompt
-    message = anthropic_client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=2000,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": base64_image,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": get_vision_prompt()
-                    }
-                ],
-            }
-        ],
-    )
-    
-    # Extract JSON response
-    response_text = message.content[0].text
-    
-    # Parse JSON from response (handle markdown code blocks)
-    try:
-        if "```json" in response_text:
-            json_str = response_text.split("```json")[1].split("```")[0].strip()
-        elif "```" in response_text:
-            json_str = response_text.split("```")[1].split("```")[0].strip()
-        else:
-            json_str = response_text.strip()
-        
-        return json.loads(json_str)
-    except json.JSONDecodeError as e:
-        # Fallback: return raw response
-        return {
-            "error": "Failed to parse JSON",
-            "raw_response": response_text,
-            "parse_error": str(e)
+        .dashboard-header h1 {
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .dashboard-header p {
+            margin-top: 4px;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.75);
+            font-weight: 400;
         }
 
+        .dashboard-body { padding: 32px 40px; }
 
-@app.get("/", response_class=HTMLResponse)
-async def dashboard():
-    """Finance Dashboard - shows all uploaded slips and match status"""
-    return generate_dashboard_html()
+        /* --- Purchase Order Lifecycle --- */
+        .lifecycle-card {
+            background: white;
+            border-radius: 16px;
+            border: 1px solid #E2E8F0;
+            padding: 32px;
+            margin-bottom: 28px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+        .lifecycle-card h2 {
+            font-size: 18px;
+            font-weight: 700;
+            color: #0F172A;
+            margin-bottom: 4px;
+        }
+        .lifecycle-card .subtitle {
+            font-size: 13px;
+            color: #64748B;
+            margin-bottom: 28px;
+        }
+        .lifecycle-steps {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0;
+        }
+        .lifecycle-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+        }
+        .lifecycle-icon-wrap {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        .lifecycle-icon-wrap.step-ordered { background: #EEF2FF; border: 2.5px solid #A5B4FC; }
+        .lifecycle-icon-wrap.step-received { background: #FEF9C3; border: 2.5px solid #FDE047; }
+        .lifecycle-icon-wrap.step-invoiced { background: #FFF7ED; border: 2.5px solid #FDBA74; }
+        .lifecycle-icon-wrap.step-matched { background: #ECFDF5; border: 2.5px solid #6EE7B7; }
 
+        .lifecycle-step-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 4px;
+        }
+        .lifecycle-step-value {
+            font-size: 24px;
+            font-weight: 800;
+            color: #0F172A;
+        }
+        .lifecycle-step-sub {
+            font-size: 11px;
+            color: #94A3B8;
+            margin-top: 2px;
+        }
+        .lifecycle-arrow {
+            font-size: 22px;
+            color: #CBD5E1;
+            flex-shrink: 0;
+            margin: 0 4px;
+            padding-bottom: 40px;
+        }
 
-@app.get("/api/history")
-async def get_history():
-    """Get processing history as JSON"""
-    return JSONResponse(content=processing_history)
+        /* --- Stat Cards --- */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            border: 1px solid #E2E8F0;
+            padding: 24px;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+        }
+        .stat-card-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748B;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        .stat-card-value {
+            font-size: 32px;
+            font-weight: 800;
+            color: #0F172A;
+            line-height: 1;
+        }
+        .stat-card-value.green { color: #10B981; }
+        .stat-card-value.amber { color: #F59E0B; }
+        .stat-card-value.rose { color: #EF4444; }
+        .stat-card-sub {
+            font-size: 12px;
+            color: #94A3B8;
+            margin-top: 6px;
+        }
+        .stat-card.highlight {
+            background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%);
+            border-color: #A7F3D0;
+        }
 
-
-@app.delete("/api/clear-history")
-async def clear_history():
-    """Clear all processing history"""
-    processing_history.clear()
-    return {"success": True, "message": "History cleared"}
-
-
-def generate_dashboard_html() -> str:
-    """Generate HTML dashboard for finance team"""
-    
-    discrepancy_count = sum(1 for r in processing_history if r.get("has_discrepancies"))
-    
-    html = f"""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>VerifyAP - Dashboard</title>
-        {get_sidebar_styles()}
-        <style>
-            * {{
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-            }}
-            
-            body {{
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: #f5f7fa;
-                color: #2d3748;
-            }}
-            
-            .header {{
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                padding: 2rem;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                position: relative;
-            }}
-            
-            .admin-link {{
-                position: absolute;
-                top: 2rem;
-                right: 2rem;
-                background: rgba(255,255,255,0.2);
-                color: white;
-                padding: 0.5rem 1rem;
-                border-radius: 6px;
-                text-decoration: none;
-                font-weight: 500;
-                transition: all 0.3s;
-            }}
-            
-            .admin-link:hover {{
-                background: rgba(255,255,255,0.3);
-                transform: translateY(-2px);
-            }}
-            
-            .header h1 {{
-                font-size: 2rem;
-                margin-bottom: 0.5rem;
-            }}
-            
-            .header p {{
-                opacity: 0.9;
-            }}
-            
-            .stats {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                gap: 1.5rem;
-                padding: 2rem;
-                max-width: 1600px;
-                margin: 0 auto;
-                padding: 2rem;
-            }}
-            
-            /* STATS GRID */
-            .stats-grid {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-                gap: 20px;
-                margin-bottom: 32px;
-            }}
-            
-            .stat-card {{
-                background: white;
-                border-radius: 12px;
-                border: 1px solid #E2E8F0;
-                padding: 24px;
-                transition: all 0.2s;
-                cursor: pointer;
-            }}
-            
-            .stat-card:hover {{
-                border-color: #4F46E5;
-                box-shadow: 0 4px 12px rgba(79, 70, 229, 0.1);
-                transform: translateY(-2px);
-            }}
-            
-            .stat-label {{
-                font-size: 13px;
-                font-weight: 500;
-                color: #64748B;
-                margin-bottom: 8px;
-            }}
-            
-            .stat-value {{
-                font-size: 32px;
-                font-weight: 700;
-                color: #0F172A;
-                margin-bottom: 4px;
-            }}
-            
-            .stat-value.warning {{
-                color: #F59E0B;
-            }}
-            
-            .stat-value.success {{
-                color: #10B981;
-            }}
-            
-            .stat-change {{
-                font-size: 13px;
-                font-weight: 600;
-                color: #64748B;
-            }}
-            
-            /* PROCESS FLOW */
-            .process-flow {{
-                background: white;
-                border-radius: 12px;
-                border: 1px solid #E2E8F0;
-                padding: 32px;
-                margin-bottom: 32px;
-            }}
-            
-            .process-header {{
-                margin-bottom: 24px;
-            }}
-            
-            .process-title {{
-                font-size: 18px;
-                font-weight: 600;
-                color: #0F172A;
-                margin-bottom: 4px;
-            }}
-            
-            .process-subtitle {{
-                font-size: 14px;
-                color: #64748B;
-            }}
-            
-            .process-steps {{
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-            }}
-            
-            .process-step {{
-                flex: 1;
-                text-align: center;
-            }}
-            
-            .step-icon {{
-                width: 72px;
-                height: 72px;
-                margin: 0 auto 16px;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 32px;
-                border: 3px solid;
-            }}
-            
-            .step-icon.complete {{
-                background: #D1FAE5;
-                border-color: #10B981;
-            }}
-            
-            .step-icon.active {{
-                background: #DBEAFE;
-                border-color: #4F46E5;
-                box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
-                animation: pulse 2s infinite;
-            }}
-            
-            .step-icon.pending {{
-                background: #FEF3C7;
-                border-color: #F59E0B;
-            }}
-            
-            @keyframes pulse {{
-                0%, 100% {{ box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1); }}
-                50% {{ box-shadow: 0 0 0 8px rgba(79, 70, 229, 0.15); }}
-            }}
-            
-            .step-label {{
-                font-size: 14px;
-                font-weight: 600;
-                color: #0F172A;
-                margin-bottom: 8px;
-            }}
-            
-            .step-count {{
-                font-size: 28px;
-                font-weight: 700;
-                color: #4F46E5;
-                margin-bottom: 4px;
-            }}
-            
-            .step-status {{
-                font-size: 12px;
-                color: #64748B;
-            }}
-            
-            .process-arrow {{
-                font-size: 32px;
-                color: #CBD5E1;
-                padding: 0 16px;
-            }}
-            
-            /* QUICK ACTIONS */
-            .actions-grid {{
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 20px;
-                margin-bottom: 32px;
-            }}
-            
-            .action-card {{
-                background: white;
-                border-radius: 12px;
-                border: 1px solid #E2E8F0;
-                padding: 24px;
-                cursor: pointer;
-                transition: all 0.2s;
-            }}
-            
-            .action-card:hover {{
-                transform: translateY(-2px);
-                box-shadow: 0 8px 24px rgba(79, 70, 229, 0.15);
-                border-color: #4F46E5;
-            }}
-            
-            .action-icon {{
-                width: 56px;
-                height: 56px;
-                background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
-                border-radius: 12px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 28px;
-                margin-bottom: 16px;
-            }}
-            
-            .action-title {{
-                font-size: 18px;
-                font-weight: 600;
-                color: #0F172A;
-                margin-bottom: 8px;
-            }}
-            
-            .action-desc {{
-                font-size: 14px;
-                color: #64748B;
-                margin-bottom: 16px;
-            }}
-            
-            /* CARDS */
-            .card {{
-                background: white;
-                border-radius: 12px;
-                border: 1px solid #E2E8F0;
-                padding: 24px;
-                margin-bottom: 24px;
-            }}
-            
-            .card-header {{
-                margin-bottom: 20px;
-            }}
-            
-            .card-title {{
-                font-size: 18px;
-                font-weight: 600;
-                color: #0F172A;
-                margin-bottom: 4px;
-            }}
-            
-            .card-subtitle {{
-                font-size: 14px;
-                color: #64748B;
-            }}
-            
-            /* BADGES */
-            .badge {{
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                padding: 4px 12px;
-                border-radius: 6px;
-                font-size: 12px;
-                font-weight: 600;
-            }}
-            
-            .badge-success {{
-                background: #D1FAE5;
-                color: #065F46;
-            }}
-            
-            .badge-warning {{
-                background: #FEF3C7;
-                color: #92400E;
-            }}
-            
-            .badge-error {{
-                background: #FEE2E2;
-                color: #991B1B;
-            }}
-            
-            .container {{
-                max-width: 1600px;
-                margin: 0 auto;
-                padding: 2rem;
-            }}
-            
-            .upload-section {{
-                background: white;
-                padding: 2rem;
-                border-radius: 12px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                margin-bottom: 2rem;
-            }}
-            
-            .upload-btn {{
-                background: #667eea;
-                color: white;
-                padding: 0.75rem 1.5rem;
-                border: none;
-                border-radius: 8px;
-                font-size: 1rem;
-                cursor: pointer;
-                transition: all 0.2s;
-            }}
-            
-            .upload-btn:hover {{
-                background: #5568d3;
-                transform: translateY(-1px);
-                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-            }}
-            
-            .results-table {{
-                background: white;
-                border-radius: 12px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                overflow: hidden;
-            }}
-            
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-            }}
-            
-            th {{
-                background: #f7fafc;
-                padding: 1rem;
-                text-align: left;
-                font-weight: 600;
-                color: #4a5568;
-                border-bottom: 2px solid #e2e8f0;
-            }}
-            
-            td {{
-                padding: 1rem;
-                border-bottom: 1px solid #e2e8f0;
-            }}
-            
-            tr:hover {{
-                background: #f7fafc;
-            }}
-            
-            .badge {{
-                display: inline-block;
-                padding: 0.25rem 0.75rem;
-                border-radius: 9999px;
-                font-size: 0.875rem;
-                font-weight: 600;
-            }}
-            
-            .badge.success {{
-                background: #c6f6d5;
-                color: #22543d;
-            }}
-            
-            .badge.warning {{
-                background: #fed7d7;
-                color: #742a2a;
-            }}
-            
-            .badge.matched {{
-                background: #bee3f8;
-                color: #2c5282;
-            }}
-            
-            .discrepancy-list {{
-                font-size: 0.875rem;
-                color: #e53e3e;
-                margin-top: 0.5rem;
-            }}
-            
-            .discrepancy-list li {{
-                margin-left: 1.5rem;
-            }}
-            
-            .no-data {{
-                text-align: center;
-                padding: 3rem;
-                color: #718096;
-            }}
-            
-            .image-preview {{
-                width: 60px;
-                height: 60px;
-                object-fit: cover;
-                border-radius: 6px;
-                cursor: pointer;
-                transition: transform 0.2s;
-            }}
-            
-            .image-preview:hover {{
-                transform: scale(1.1);
-            }}
-        </style>
-    </head>
-    <body>
-        {get_sidebar_html("dashboard")}
-        <div class="verifyap-main-content">
-        <div class="header">
-            <h1>✓ VerifyAP</h1>
+        @media (max-width: 900px) {
+            .stat-grid { grid-template-columns: repeat(2, 1fr); }
+            .lifecycle-steps { flex-wrap: wrap; gap: 16px; }
+            .lifecycle-arrow { display: none; }
+        }
+    </style>
+</head>
+<body>
+    """
+        + sidebar_html
+        + """
+    <div class="verifyap-main-content">
+        <div class="dashboard-header">
+            <h1>&#10003; VerifyAP</h1>
             <p>Dashboard</p>
         </div>
-        
-        <div class="container">
-            <!-- Process Flow -->
-            <div class="process-flow">
-                <div class="process-header">
-                    <h2 class="process-title">Purchase Order Lifecycle</h2>
-                    <p class="process-subtitle">Track orders from purchase to payment</p>
-                </div>
-                
-                <div class="process-steps">
-                    <div class="process-step">
-                        <div class="step-icon complete">📝</div>
-                        <div class="step-label">Ordered</div>
-                        <div class="step-count">{len(po_manager.po_dict)}</div>
-                        <div class="step-status">Open POs</div>
+
+        <div class="dashboard-body">
+            <!-- Purchase Order Lifecycle -->
+            <div class="lifecycle-card">
+                <h2>Purchase Order Lifecycle</h2>
+                <p class="subtitle">Track orders from purchase to payment</p>
+                <div class="lifecycle-steps">
+                    <div class="lifecycle-step">
+                        <div class="lifecycle-icon-wrap step-ordered">&#128203;</div>
+                        <div class="lifecycle-step-label">Ordered</div>
+                        <div class="lifecycle-step-value">"""
+        + str(open_pos)
+        + """</div>
+                        <div class="lifecycle-step-sub">Open POs</div>
                     </div>
-                    
-                    <div class="process-arrow">→</div>
-                    
-                    <div class="process-step">
-                        <div class="step-icon active">📦</div>
-                        <div class="step-label">Received</div>
-                        <div class="step-count">{len(processing_history)}</div>
-                        <div class="step-status">Packing Slips</div>
+                    <div class="lifecycle-arrow">&rarr;</div>
+                    <div class="lifecycle-step">
+                        <div class="lifecycle-icon-wrap step-received">&#128230;</div>
+                        <div class="lifecycle-step-label">Received</div>
+                        <div class="lifecycle-step-value">"""
+        + str(received_count)
+        + """</div>
+                        <div class="lifecycle-step-sub">Packing Slips</div>
                     </div>
-                    
-                    <div class="process-arrow">→</div>
-                    
-                    <div class="process-step">
-                        <div class="step-icon pending">💰</div>
-                        <div class="step-label">Invoiced</div>
-                        <div class="step-count">0</div>
-                        <div class="step-status">Awaiting Match</div>
+                    <div class="lifecycle-arrow">&rarr;</div>
+                    <div class="lifecycle-step">
+                        <div class="lifecycle-icon-wrap step-invoiced">&#128176;</div>
+                        <div class="lifecycle-step-label">Invoiced</div>
+                        <div class="lifecycle-step-value">"""
+        + str(invoiced_count)
+        + """</div>
+                        <div class="lifecycle-step-sub">Awaiting Match</div>
                     </div>
-                    
-                    <div class="process-arrow">→</div>
-                    
-                    <div class="process-step">
-                        <div class="step-icon complete">✓</div>
-                        <div class="step-label">Matched</div>
-                        <div class="step-count">0</div>
-                        <div class="step-status">Ready to Pay</div>
+                    <div class="lifecycle-arrow">&rarr;</div>
+                    <div class="lifecycle-step">
+                        <div class="lifecycle-icon-wrap step-matched">&#10003;</div>
+                        <div class="lifecycle-step-label">Matched</div>
+                        <div class="lifecycle-step-value">"""
+        + str(matched_final)
+        + """</div>
+                        <div class="lifecycle-step-sub">Ready to Pay</div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Stats Grid -->
-            <div class="stats-grid">
+
+            <!-- Stat Cards -->
+            <div class="stat-grid">
                 <div class="stat-card">
-                    <div class="stat-label">Total Transactions</div>
-                    <div class="stat-value">{len(processing_history)}</div>
-                    <div class="stat-change">Packing slips processed</div>
+                    <div class="stat-card-label">Total Transactions</div>
+                    <div class="stat-card-value">"""
+        + str(total_transactions)
+        + """</div>
+                    <div class="stat-card-sub">Packing slips processed</div>
                 </div>
-                
                 <div class="stat-card">
-                    <div class="stat-label">Discrepancies Found</div>
-                    <div class="stat-value warning">{discrepancy_count}</div>
-                    <div class="stat-change">Items need attention</div>
+                    <div class="stat-card-label">Discrepancies Found</div>
+                    <div class="stat-card-value amber">"""
+        + str(discrepancies)
+        + """</div>
+                    <div class="stat-card-sub">Items need attention</div>
                 </div>
-                
                 <div class="stat-card">
-                    <div class="stat-label">POs in Database</div>
-                    <div class="stat-value success">{len(po_manager.po_dict)}</div>
-                    <div class="stat-change">Active purchase orders</div>
+                    <div class="stat-card-label">POs in Database</div>
+                    <div class="stat-card-value">"""
+        + str(total_pos)
+        + """</div>
+                    <div class="stat-card-sub">Active purchase orders</div>
                 </div>
-                
-                <div class="stat-card">
-                    <div class="stat-label">Match Rate</div>
-                    <div class="stat-value success">{100 - (discrepancy_count * 100 // max(len(processing_history), 1))}%</div>
-                    <div class="stat-change">Successfully matched</div>
-                </div>
-            </div>
-            
-            <!-- Quick Actions -->
-            <div class="actions-grid">
-                <div class="action-card" onclick="document.getElementById('upload-section').scrollIntoView({{behavior: 'smooth'}})">
-                    <div class="action-icon">📦</div>
-                    <h3 class="action-title">Log a Delivery</h3>
-                    <p class="action-desc">Upload packing slip photo to record goods received</p>
-                </div>
-                
-                <div class="action-card" onclick="window.location.href='/invoices'">
-                    <div class="action-icon">💰</div>
-                    <h3 class="action-title">Process Invoice</h3>
-                    <p class="action-desc">Upload vendor invoice for 3-way verification</p>
-                </div>
-            </div>
-        
-        <div class="stats" style="display:none;">
-            <!-- Old stats hidden -->
-        </div>
-        
-        <div class="container">
-            <div class="card" id="upload-section">
-                <div class="card-header">
-                    <h2 class="card-title">Upload Packing Slip</h2>
-                    <p class="card-subtitle">Take or upload a photo to verify against purchase orders</p>
-                </div>
-                <form id="uploadForm" enctype="multipart/form-data">
-                    <div style="border: 2px dashed #E2E8F0; border-radius: 12px; padding: 48px; text-align: center; background: #F8FAFC; cursor: pointer; transition: all 0.2s;" onclick="document.getElementById('fileInput').click()" onmouseover="this.style.borderColor='#4F46E5'; this.style.background='#EEF2FF'" onmouseout="this.style.borderColor='#E2E8F0'; this.style.background='#F8FAFC'">
-                        <div style="font-size: 48px; margin-bottom: 16px;">📦</div>
-                        <p style="font-size: 16px; font-weight: 600; color: #0F172A; margin-bottom: 8px;">
-                            Drop packing slip photo here
-                        </p>
-                        <p style="font-size: 14px; color: #64748B; margin-bottom: 16px;">
-                            or click to browse • Supports JPG, PNG, HEIC
-                        </p>
-                        <input type="file" id="fileInput" accept="image/*" style="display: none;">
-                        <button type="submit" class="upload-btn" style="background: #4F46E5; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#4338CA'; this.style.transform='translateY(-1px)'" onmouseout="this.style.background='#4F46E5'; this.style.transform='translateY(0)'">
-                            📸 Upload & Process
-                        </button>
-                    </div>
-                </form>
-                <div id="uploadStatus" style="margin-top: 16px;"></div>
-            </div>
-            
-            <div class="card">
-                <div class="card-header">
-                    <h2 class="card-title">Recent Activity</h2>
-                </div>
-                <div style="overflow-x: auto; border-radius: 12px; border: 1px solid #E2E8F0;">
-                <table style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                        <tr>
-                            <th>Image</th>
-                            <th>Timestamp</th>
-                            <th>PO Number</th>
-                            <th>Vendor</th>
-                            <th>Status</th>
-                            <th>Discrepancies</th>
-                        </tr>
-                    </thead>
-                    <tbody id="resultsBody">
-                        {generate_table_rows()}
-                    </tbody>
-                </table>
+                <div class="stat-card highlight">
+                    <div class="stat-card-label">Match Rate</div>
+                    <div class="stat-card-value green">"""
+        + str(match_rate)
+        + """%</div>
+                    <div class="stat-card-sub">Successfully matched</div>
                 </div>
             </div>
         </div>
-        
-        <script>
-            document.getElementById('uploadForm').addEventListener('submit', async (e) => {{
-                e.preventDefault();
-                
-                const fileInput = document.getElementById('fileInput');
-                const statusDiv = document.getElementById('uploadStatus');
-                
-                if (!fileInput.files[0]) {{
-                    statusDiv.innerHTML = '<p style="color: #e53e3e;">Please select a file</p>';
-                    return;
-                }}
-                
-                statusDiv.innerHTML = '<p style="color: #667eea;">Processing... ⏳</p>';
-                
-                const formData = new FormData();
-                formData.append('file', fileInput.files[0]);
-                
-                try {{
-                    const response = await fetch('/api/upload-packing-slip', {{
-                        method: 'POST',
-                        body: formData
-                    }});
-                    
-                    const data = await response.json();
-                    
-                    if (data.success) {{
-                        statusDiv.innerHTML = '<p style="color: #38a169;">✓ Processed successfully!</p>';
-                        setTimeout(() => location.reload(), 1500);
-                    }} else {{
-                        statusDiv.innerHTML = '<p style="color: #e53e3e;">✗ Processing failed</p>';
-                    }}
-                }} catch (error) {{
-                    statusDiv.innerHTML = '<p style="color: #e53e3e;">✗ Error: ' + error.message + '</p>';
-                }}
-            }});
-        </script>
-        </div>
-    </body>
-    </html>
-    """
-    
+    </div>
+</body>
+</html>"""
+    )
+
     return html
 
 
-def generate_table_rows() -> str:
-    """Generate HTML table rows for processing history"""
-    if not processing_history:
-        return """
-        <tr>
-            <td colspan="6" style="text-align: center; padding: 64px 32px;">
-                <div style="font-size: 64px; margin-bottom: 16px; opacity: 0.3;">📋</div>
-                <div style="font-size: 18px; font-weight: 600; color: #0F172A; margin-bottom: 8px;">
-                    No packing slips processed yet
-                </div>
-                <div style="font-size: 14px; color: #64748B;">
-                    Upload one above to get started!
-                </div>
-            </td>
-        </tr>
-        """
-    
-    rows = []
-    for record in reversed(processing_history):  # Show newest first
-        vision_data = record.get("vision_data", {})
-        match_result = record.get("match_result", {})
-        
-        po_number = vision_data.get("po_number", "N/A")
-        vendor = vision_data.get("vendor_name", "N/A")
-        
-        # Determine status badge with modern styling
-        if match_result.get("po_found"):
-            if record.get("has_discrepancies"):
-                status_badge = '<span class="badge badge-warning">⚠️ DISCREPANCY</span>'
-            else:
-                status_badge = '<span class="badge badge-success">✓ MATCHED</span>'
-        else:
-            status_badge = '<span class="badge badge-error">❌ NO MATCH</span>'
-        
-        # Generate discrepancy list
-        discrepancies = match_result.get("discrepancies", [])
-        discrepancy_html = ""
-        if discrepancies:
-            discrepancy_html = "<ul style='margin: 0; padding-left: 20px; font-size: 13px;'>"
-            for disc in discrepancies[:3]:  # Show max 3
-                discrepancy_html += f"<li>{disc}</li>"
-            if len(discrepancies) > 3:
-                discrepancy_html += f"<li>...and {len(discrepancies) - 3} more</li>"
-            discrepancy_html += "</ul>"
-        
-        # Image preview
-        filepath = record.get("filepath", "")
-        image_html = f'<img src="/{filepath}" class="image-preview" alt="Packing slip">' if filepath else "📄"
-        
-        rows.append(f"""
-        <tr>
-            <td>{image_html}</td>
-            <td>{record.get('timestamp', 'N/A')}</td>
-            <td><strong>{po_number}</strong></td>
-            <td>{vendor}</td>
-            <td>{status_badge}</td>
-            <td>{discrepancy_html if discrepancy_html else "—"}</td>
-        </tr>
-        """)
-    
-    
-    return "\n".join(rows)
+# =====================
+# ROUTES
+# =====================
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard():
+    return get_dashboard_html()
 
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page():
-    """Admin page for uploading PO CSV"""
-    return get_admin_html()
+    return get_admin_html(purchase_orders)
 
 
-@app.post("/api/upload-po-csv")
-async def upload_po_csv(file: UploadFile = File(...)):
-    """Upload and load PO CSV file"""
-    try:
-        # Validate file type
-        if not file.filename.endswith('.csv'):
-            raise HTTPException(400, "File must be a CSV")
-        
-        # Save uploaded CSV
-        csv_path = Path("data/open_pos.csv")
-        contents = await file.read()
-        
-        with open(csv_path, "wb") as f:
-            f.write(contents)
-        
-        # Reload PO data
-        result = po_manager.load_from_csv(str(csv_path))
-        
-        return {
-            "success": True,
-            "message": f"✓ Loaded {result['po_count']} POs with {result['line_item_count']} line items from {result['vendor_count']} vendors",
-            "details": result
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/po-stats")
-async def get_po_stats():
-    """Get current PO database statistics"""
-    vendor_set = set()
-    line_item_count = 0
-    
-    for po in po_manager.po_dict.values():
-        vendor_set.add(po.vendor_name)
-        line_item_count += len(po.line_items)
-    
-    return {
-        "po_count": len(po_manager.po_dict),
-        "line_item_count": line_item_count,
-        "vendor_count": len(vendor_set)
-    }
+@app.get("/deliveries", response_class=HTMLResponse)
+async def deliveries_page():
+    return get_deliveries_html()
 
 
 @app.get("/invoices", response_class=HTMLResponse)
-async def invoice_page():
-    """Invoice upload and management page"""
+async def invoices_page():
     return get_invoice_html()
 
 
-@app.post("/api/upload-invoice")
-async def upload_invoice(file: UploadFile = File(...)):
-    """Upload and process invoice for 3-way matching"""
+# =====================
+# API ENDPOINTS
+# =====================
+
+@app.get("/api/po-stats")
+async def po_stats():
+    """Return PO statistics for the admin page."""
+    total_pos = len(purchase_orders)
+    total_items = sum(len(po.get("items", [])) for po in purchase_orders.values())
+    vendors = set()
+    for po in purchase_orders.values():
+        vendor = po.get("vendor", "")
+        if vendor:
+            vendors.add(vendor)
+    return {
+        "active_pos": total_pos,
+        "line_items": total_items,
+        "active_vendors": len(vendors),
+    }
+
+
+@app.post("/api/upload-csv")
+async def upload_csv(file: UploadFile = File(...)):
+    """Handle CSV upload for purchase orders."""
+    contents = await file.read()
+    result = handle_csv_upload(contents, purchase_orders)
+    return JSONResponse(content=result)
+
+
+@app.post("/api/upload-po-pdf")
+async def upload_po_pdf(file: UploadFile = File(...)):
+    """Handle PDF upload for purchase orders (Claude Vision OCR)."""
+    contents = await file.read()
+    filename = file.filename or "po_upload.pdf"
+    result = await handle_po_pdf_upload(contents, filename, purchase_orders)
+    return JSONResponse(content=result)
+
+
+@app.post("/api/upload-packing-slip")
+async def upload_packing_slip(file: UploadFile = File(...)):
+    """Handle packing slip upload — OCR via Claude Vision + PO matching."""
+    import anthropic
+    from .vision_prompt import get_vision_prompt
+
+    contents = await file.read()
+    filename = file.filename or "packing_slip.jpg"
+
+    # Determine media type
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else "jpg"
+    media_map = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "heic": "image/heic",
+        "pdf": "application/pdf",
+    }
+    media_type = media_map.get(ext, "image/jpeg")
+
+    # Save file
+    filepath = os.path.join("uploads", filename)
+    with open(filepath, "wb") as f:
+        f.write(contents)
+
+    # Encode to base64
+    b64_data = base64.b64encode(contents).decode("utf-8")
+
+    # Call Claude Vision
     try:
-        # Validate file type
-        if not (file.content_type.startswith("image/") or file.content_type == "application/pdf"):
-            raise HTTPException(400, "File must be an image or PDF")
-        
-        # Save uploaded file
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"invoice_{timestamp}_{file.filename}"
-        filepath = Path("uploads") / filename
-        
-        content = await file.read()
-        with open(filepath, "wb") as f:
-            f.write(content)
-        
-        # Process with Claude Vision
-        invoice_vision_data = await process_invoice_with_vision(content, file.content_type)
-        
-        # Parse into InvoiceData structure
-        invoice_data = parse_invoice_from_vision(invoice_vision_data)
-        
-        # Find matching PO
-        po_data = None
-        if invoice_data.po_number:
-            po = po_manager.po_dict.get(invoice_data.po_number)
-            if po:
-                po_data = {
-                    "po_number": po.po_number,
-                    "vendor": po.vendor_name,
-                    "line_items": [
-                        {
-                            "description": item.item_description,
-                            "quantity_ordered": item.quantity_ordered,
-                            "unit_price": item.unit_price
-                        }
-                        for item in po.line_items
-                    ]
-                }
-        
-        # Find matching packing slip
-        packing_slip_data = None
-        for record in processing_history:
-            if record.get("vision_data", {}).get("po_number") == invoice_data.po_number:
-                packing_slip_data = record.get("vision_data")
-                break
-        
-        # Perform 3-way match
-        match_result = three_way_matcher.match_invoice(
-            invoice_data,
-            po_data=po_data,
-            packing_slip_data=packing_slip_data
-        )
-        
-        # Store result
-        invoice_record = {
-            "id": len(invoice_history) + 1,
-            "timestamp": timestamp,
-            "filename": filename,
-            "filepath": str(filepath),
-            "invoice_data": invoice_vision_data,
-            "invoice_number": invoice_data.invoice_number,
-            "po_number": invoice_data.po_number,
-            "vendor": invoice_data.vendor_name,
-            "total_amount": invoice_data.total_amount,
-            "match_status": match_result["match_status"],
-            "match_result": match_result
-        }
-        
-        invoice_history.append(invoice_record)
-        
-        return {
-            "success": True,
-            "message": match_result["summary"],
-            "invoice_number": invoice_data.invoice_number,
-            "po_number": invoice_data.po_number,
-            "match_status": match_result["match_status"],
-            "discrepancies": match_result["discrepancies"],
-            "warnings": match_result.get("warnings", []),
-            "details": match_result["details"]
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-
-@app.get("/api/invoices")
-async def get_invoices():
-    """Get all uploaded invoices"""
-    return JSONResponse(content=invoice_history)
-
-
-async def process_invoice_with_vision(content: bytes, content_type: str) -> Dict:
-    """Process invoice with Claude Vision API"""
-    
-    # Prepare image data
-    if content_type == "application/pdf":
-        # For PDF, we'll use document type
-        media_type = "application/pdf"
-        image_data = base64.standard_b64encode(content).decode("utf-8")
-    else:
-        # For images
-        media_type = content_type
-        image_data = base64.standard_b64encode(content).decode("utf-8")
-    
-    # Call Claude Vision API
-    message = anthropic_client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=2000,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image" if content_type.startswith("image/") else "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": image_data,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": get_invoice_vision_prompt()
-                    }
-                ],
+        # Build content block based on file type
+        if media_type == "application/pdf":
+            source_block = {
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": "application/pdf",
+                    "data": b64_data,
+                },
             }
-        ],
-    )
-    
-    # Extract JSON response
-    response_text = message.content[0].text
-    
-    # Parse JSON from response
-    try:
+        else:
+            source_block = {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": b64_data,
+                },
+            }
+
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2000,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        source_block,
+                        {"type": "text", "text": get_vision_prompt()},
+                    ],
+                }
+            ],
+        )
+
+        response_text = message.content[0].text
+
+        # Extract JSON (handle markdown fencing)
         if "```json" in response_text:
             json_str = response_text.split("```json")[1].split("```")[0].strip()
         elif "```" in response_text:
             json_str = response_text.split("```")[1].split("```")[0].strip()
         else:
             json_str = response_text.strip()
-        
-        return json.loads(json_str)
-    except json.JSONDecodeError as e:
-        return {
-            "error": "Failed to parse JSON",
-            "raw_response": response_text,
-            "parse_error": str(e)
-        }
+
+        slip_data = json.loads(json_str)
+
+        # Match against POs
+        match_result = match_packing_slip(slip_data, purchase_orders)
+        slip_data["match_result"] = match_result
+        slip_data["has_discrepancy"] = match_result.get("has_discrepancy", False)
+
+        packing_slips.append(slip_data)
+
+        return {"success": True, "data": slip_data, "match": match_result}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
-@app.get("/api/po-stats")
-async def get_po_stats():
-    """Get current PO database statistics"""
-    vendor_set = set()
-    line_item_count = 0
-    
-    for po in po_manager.po_dict.values():
-        vendor_set.add(po.vendor_name)
-        line_item_count += len(po.line_items)
-    
-    return {
-        "po_count": len(po_manager.po_dict),
-        "line_item_count": line_item_count,
-        "vendor_count": len(vendor_set)
+@app.post("/api/upload-invoice")
+async def upload_invoice(file: UploadFile = File(...)):
+    """Handle invoice upload — OCR via Claude Vision + 3-way matching."""
+    import anthropic
+    from .invoice_vision_prompt import get_invoice_vision_prompt
+
+    contents = await file.read()
+    filename = file.filename or "invoice.pdf"
+
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else "jpg"
+    media_map = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "pdf": "application/pdf",
     }
+    media_type = media_map.get(ext, "image/jpeg")
 
+    filepath = os.path.join("uploads", filename)
+    with open(filepath, "wb") as f:
+        f.write(contents)
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    b64_data = base64.b64encode(contents).decode("utf-8")
+
+    try:
+        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+        if media_type == "application/pdf":
+            source_block = {
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": "application/pdf",
+                    "data": b64_data,
+                },
+            }
+        else:
+            source_block = {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": b64_data,
+                },
+            }
+
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2000,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        source_block,
+                        {"type": "text", "text": get_invoice_vision_prompt()},
+                    ],
+                }
+            ],
+        )
+
+        response_text = message.content[0].text
+
+        if "```json" in response_text:
+            json_str = response_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in response_text:
+            json_str = response_text.split("```")[1].split("```")[0].strip()
+        else:
+            json_str = response_text.strip()
+
+        invoice_data = json.loads(json_str)
+
+        # 3-way match
+        result = match_invoice(invoice_data, purchase_orders, packing_slips)
+        invoice_data["match_result"] = result
+        invoices.append(invoice_data)
+        match_results.append(result)
+
+        return {"success": True, "data": invoice_data, "match": result}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
