@@ -19,6 +19,7 @@ os.makedirs("static", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.include_router(api_v2_router)
 
 # --- In-Memory Storage ---
 purchase_orders = {}
@@ -34,7 +35,12 @@ from .deliveries_html import get_deliveries_html
 from .sidebar_component import get_sidebar_html, get_sidebar_styles
 from .po_matcher import match_packing_slip
 from .invoice_matcher import match_invoice
-
+from .api_routes import router as api_v2_router
+from .dashboard_v2_html import get_dashboard_v2_html
+from .po_list_html import get_po_list_html
+from .discrepancies_html import get_discrepancy_list_html
+from .match_detail_html import get_match_detail_html
+from .document_history_html import get_document_history_html
 
 # --- Dashboard HTML ---
 def get_dashboard_html():
@@ -328,6 +334,29 @@ async def admin_page():
 async def deliveries_page():
     return get_deliveries_html()
 
+@app.get("/dashboard-v2", response_class=HTMLResponse)
+async def dashboard_v2():
+    return get_dashboard_v2_html()
+
+@app.get("/po-list", response_class=HTMLResponse)
+async def po_list():
+    return get_po_list_html()
+
+@app.get("/discrepancy-list", response_class=HTMLResponse)
+async def discrepancy_list():
+    return get_discrepancy_list_html()
+
+@app.get("/match-detail/{match_id}", response_class=HTMLResponse)
+async def match_detail(match_id: str):
+    return get_match_detail_html()
+
+@app.get("/po-detail/{po_id}", response_class=HTMLResponse)
+async def po_detail(po_id: str):
+    return get_match_detail_html()
+
+@app.get("/document-history", response_class=HTMLResponse)
+async def document_history():
+    return get_document_history_html()
 
 @app.get("/invoices", response_class=HTMLResponse)
 async def invoices_page():
