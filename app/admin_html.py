@@ -1,6 +1,6 @@
 """
 VerifyAP - Purchase Orders Admin Page
-Updated: Feb 26, 2026 — Generalized (removed NetSuite branding), added PDF upload.
+Updated: Mar 2, 2026 — Unified smart upload (CSV, PDF, image auto-detection).
 """
 
 import csv
@@ -44,8 +44,40 @@ def handle_csv_upload(contents, purchase_orders):
         return {"success": False, "error": str(e)}
 
 
+def handle_tsv_upload(contents, purchase_orders):
+    """Parse a TSV file and load POs into memory."""
+    try:
+        text = contents.decode("utf-8")
+        reader = csv.DictReader(io.StringIO(text), delimiter="\t")
+        count = 0
+        for row in reader:
+            po_num = row.get("PO Number", row.get("po_number", row.get("PO#", "")))
+            if not po_num:
+                continue
+            po_num = po_num.strip()
+
+            if po_num not in purchase_orders:
+                purchase_orders[po_num] = {
+                    "po_number": po_num,
+                    "vendor": row.get("Vendor", row.get("vendor", "")),
+                    "items": [],
+                }
+
+            purchase_orders[po_num]["items"].append({
+                "description": row.get("Item Description", row.get("description", row.get("Item", ""))),
+                "quantity": row.get("Quantity", row.get("quantity", row.get("Qty", "0"))),
+                "unit_price": row.get("Unit Price", row.get("unit_price", row.get("Price", "0"))),
+            })
+            count += 1
+
+        return {"success": True, "message": "Imported " + str(count) + " line items across " + str(len(purchase_orders)) + " POs."}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 async def handle_po_pdf_upload(contents, filename, purchase_orders):
-    """Process a PO PDF via Claude Vision OCR and load into memory."""
+    """Process a PO PDF/image via Claude Vision OCR and load into memory."""
     try:
         import anthropic
         from .po_vision_prompt import get_po_vision_prompt
@@ -58,6 +90,12 @@ async def handle_po_pdf_upload(contents, filename, purchase_orders):
             "jpg": "image/jpeg",
             "jpeg": "image/jpeg",
             "png": "image/png",
+            "heic": "image/heic",
+            "gif": "image/gif",
+            "webp": "image/webp",
+            "tiff": "image/tiff",
+            "tif": "image/tiff",
+            "bmp": "image/bmp",
         }
         media_type = media_map.get(ext, "application/pdf")
 
@@ -117,6 +155,7 @@ async def handle_po_pdf_upload(contents, filename, purchase_orders):
         po_list = po_data if isinstance(po_data, list) else [po_data]
 
         count = 0
+        total_items = 0
         for po in po_list:
             po_num = po.get("po_number", "")
             if not po_num:
@@ -124,13 +163,17 @@ async def handle_po_pdf_upload(contents, filename, purchase_orders):
             purchase_orders[po_num] = {
                 "po_number": po_num,
                 "vendor": po.get("vendor", ""),
+                "date": po.get("date", ""),
+                "ship_to": po.get("ship_to", ""),
+                "total": po.get("total", 0),
                 "items": po.get("items", []),
             }
+            total_items += len(po.get("items", []))
             count += 1
 
         return {
             "success": True,
-            "message": "Extracted " + str(count) + " purchase order(s) from PDF.",
+            "message": "Extracted " + str(count) + " purchase order(s) with " + str(total_items) + " line items from document.",
             "data": po_list,
         }
 
@@ -139,7 +182,7 @@ async def handle_po_pdf_upload(contents, filename, purchase_orders):
 
 
 def get_admin_html(purchase_orders):
-    """Generate the Purchase Orders admin page."""
+    """Generate the Purchase Orders admin page with unified smart upload."""
 
     sidebar_html = get_sidebar_html("purchase_orders")
     sidebar_styles = get_sidebar_styles()
@@ -202,23 +245,6 @@ def get_admin_html(purchase_orders):
         .upload-section h2 { font-size: 18px; font-weight: 700; color: #0F172A; margin-bottom: 4px; }
         .upload-section .subtitle { font-size: 13px; color: #64748B; margin-bottom: 20px; }
 
-        /* Tabs */
-        .upload-tabs {
-            display: flex; gap: 0; margin-bottom: 24px;
-            border-bottom: 2px solid #E2E8F0;
-        }
-        .upload-tab {
-            padding: 10px 20px; font-size: 13px; font-weight: 600;
-            color: #64748B; cursor: pointer; border-bottom: 2px solid transparent;
-            margin-bottom: -2px; transition: all 0.2s ease;
-            background: none; border-top: none; border-left: none; border-right: none;
-        }
-        .upload-tab:hover { color: #4F46E5; }
-        .upload-tab.active { color: #4F46E5; border-bottom-color: #4F46E5; }
-
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-
         /* Tip box */
         .tip-box {
             background: #EEF2FF; border-left: 4px solid #4F46E5;
@@ -260,6 +286,14 @@ def get_admin_html(purchase_orders):
         }
         .selected-file-remove:hover { color: #EF4444; }
 
+        .file-mode-badge {
+            display: inline-block; padding: 3px 8px; border-radius: 4px;
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            margin-left: 8px;
+        }
+        .file-mode-badge.csv-mode { background: #ECFDF5; color: #059669; }
+        .file-mode-badge.ai-mode { background: #FEF3C7; color: #D97706; }
+
         .upload-btn {
             display: inline-flex; align-items: center; gap: 8px;
             padding: 12px 28px;
@@ -290,6 +324,41 @@ def get_admin_html(purchase_orders):
         .status-msg.show { display: block; }
         .status-msg.success { background: #ECFDF5; border: 1px solid #A7F3D0; color: #059669; }
         .status-msg.error { background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626; }
+
+        /* PO Table */
+        .po-table-section {
+            background: white; border-radius: 16px; border: 1px solid #E2E8F0;
+            padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+        .po-table-section h2 { font-size: 18px; font-weight: 700; color: #0F172A; margin-bottom: 4px; }
+        .po-table-section .subtitle { font-size: 13px; color: #64748B; margin-bottom: 20px; }
+        .po-table {
+            width: 100%; border-collapse: collapse;
+        }
+        .po-table th {
+            text-align: left; padding: 10px 14px; font-size: 11px; font-weight: 600;
+            color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;
+            border-bottom: 2px solid #E2E8F0; background: #F8FAFC;
+        }
+        .po-table td {
+            padding: 12px 14px; font-size: 13px; color: #334155;
+            border-bottom: 1px solid #F1F5F9;
+        }
+        .po-table tr:hover td { background: #F8FAFC; }
+        .po-badge {
+            display: inline-block; padding: 3px 10px; border-radius: 6px;
+            font-size: 11px; font-weight: 600; background: #EEF2FF; color: #4F46E5;
+        }
+        .empty-state {
+            text-align: center; padding: 48px 24px; color: #94A3B8;
+        }
+        .empty-state-icon { font-size: 48px; margin-bottom: 12px; }
+        .empty-state-text { font-size: 15px; font-weight: 500; }
+        .empty-state-sub { font-size: 13px; margin-top: 4px; }
+
+        @media (max-width: 768px) {
+            .stat-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -325,225 +394,160 @@ def get_admin_html(purchase_orders):
                 </div>
             </div>
 
-            <!-- Upload Section -->
+            <!-- Unified Upload Section -->
             <div class="upload-section">
                 <h2>Upload Purchase Orders</h2>
-                <p class="subtitle">Import purchase orders from a CSV file or upload a PO document (PDF/image) for AI extraction</p>
+                <p class="subtitle">Drop any PO document &mdash; we'll automatically detect the format and extract the data</p>
 
-                <div class="upload-tabs">
-                    <button class="upload-tab active" id="tabCsv" onclick="switchTab('csv')">&#128196; CSV Upload</button>
-                    <button class="upload-tab" id="tabPdf" onclick="switchTab('pdf')">&#128209; PDF / Image Upload</button>
+                <div class="tip-box">
+                    <div class="tip-box-title">&#128161; Supported Formats:</div>
+                    <ul>
+                        <li><strong>PDF</strong> &mdash; Digital or scanned purchase orders (AI-powered extraction)</li>
+                        <li><strong>Images</strong> (JPG, PNG) &mdash; Photos of printed POs (AI-powered extraction)</li>
+                        <li><strong>CSV / TSV</strong> &mdash; Spreadsheet exports from your ERP (direct import)</li>
+                    </ul>
                 </div>
 
-                <!-- CSV Tab -->
-                <div class="tab-content active" id="tabContentCsv">
-                    <div class="tip-box">
-                        <div class="tip-box-title">&#128214; CSV Format Guide:</div>
-                        <ul>
-                            <li>Required columns: PO Number, Vendor, Item Description, Quantity, Unit Price</li>
-                            <li>Export from your ERP or accounting system as CSV</li>
-                            <li>One row per line item (multiple rows per PO is fine)</li>
-                        </ul>
+                <input type="file" id="poFileInput" class="file-input"
+                       accept=".pdf,.jpg,.jpeg,.png,.csv,.tsv,.heic,.gif,.webp,.tiff,.tif,.bmp">
+
+                <div class="drop-zone" id="poDropZone">
+                    <div class="drop-zone-icon">&#128203;</div>
+                    <div class="drop-zone-text">Drop your PO document here</div>
+                    <div class="drop-zone-sub">or click to browse &bull; Any format accepted</div>
+                    <div class="file-types">
+                        <span class="file-type-badge">PDF</span>
+                        <span class="file-type-badge">JPG</span>
+                        <span class="file-type-badge">PNG</span>
+                        <span class="file-type-badge">CSV</span>
+                        <span class="file-type-badge">TSV</span>
+                        <span class="file-type-badge">HEIC</span>
                     </div>
-
-                    <input type="file" id="csvFileInput" class="file-input" accept=".csv">
-
-                    <div class="drop-zone" id="csvDropZone">
-                        <div class="drop-zone-icon">&#128202;</div>
-                        <div class="drop-zone-text">Drop CSV file here</div>
-                        <div class="drop-zone-sub">or click to browse &bull; Accepts .csv files</div>
-                    </div>
-
-                    <div class="selected-file" id="csvSelectedFile">
-                        <span>&#128196;</span>
-                        <span id="csvFileName">file.csv</span>
-                        <span class="selected-file-remove" id="csvRemoveFile">&times;</span>
-                    </div>
-
-                    <button class="upload-btn" id="csvUploadBtn" disabled>
-                        &#128640; Upload &amp; Process CSV
-                    </button>
-
-                    <div class="loading-spinner" id="csvLoading">
-                        <div class="spinner"></div>
-                        <div class="loading-text">Processing CSV...</div>
-                    </div>
-                    <div class="status-msg" id="csvStatus"></div>
                 </div>
 
-                <!-- PDF Tab -->
-                <div class="tab-content" id="tabContentPdf">
-                    <div class="tip-box">
-                        <div class="tip-box-title">&#129302; AI-Powered Extraction:</div>
-                        <ul>
-                            <li>Upload a PDF or photo of your purchase order</li>
-                            <li>Our AI will extract PO number, vendor, line items, and quantities</li>
-                            <li>Works with scanned documents, photos, and digital PDFs</li>
-                        </ul>
-                    </div>
-
-                    <input type="file" id="pdfFileInput" class="file-input"
-                           accept=".pdf,.jpg,.jpeg,.png">
-
-                    <div class="drop-zone" id="pdfDropZone">
-                        <div class="drop-zone-icon">&#128209;</div>
-                        <div class="drop-zone-text">Drop PO document here</div>
-                        <div class="drop-zone-sub">or click to browse</div>
-                        <div class="file-types">
-                            <span class="file-type-badge">PDF</span>
-                            <span class="file-type-badge">JPG</span>
-                            <span class="file-type-badge">PNG</span>
-                        </div>
-                    </div>
-
-                    <div class="selected-file" id="pdfSelectedFile">
-                        <span>&#128196;</span>
-                        <span id="pdfFileName">document.pdf</span>
-                        <span class="selected-file-remove" id="pdfRemoveFile">&times;</span>
-                    </div>
-
-                    <button class="upload-btn" id="pdfUploadBtn" disabled>
-                        &#129302; Upload &amp; Extract with AI
-                    </button>
-
-                    <div class="loading-spinner" id="pdfLoading">
-                        <div class="spinner"></div>
-                        <div class="loading-text">Analyzing document with AI...</div>
-                    </div>
-                    <div class="status-msg" id="pdfStatus"></div>
+                <div class="selected-file" id="poSelectedFile">
+                    <span>&#128196;</span>
+                    <span id="poFileName">document.pdf</span>
+                    <span class="file-mode-badge" id="poModeBadge"></span>
+                    <span class="selected-file-remove" id="poRemoveFile">&times;</span>
                 </div>
+
+                <button class="upload-btn" id="poUploadBtn" disabled>
+                    &#128640; Upload &amp; Process
+                </button>
+
+                <div class="loading-spinner" id="poLoading">
+                    <div class="spinner"></div>
+                    <div class="loading-text" id="poLoadingText">Processing...</div>
+                </div>
+                <div class="status-msg" id="poStatus"></div>
+            </div>
+
+            <!-- PO Table -->
+            <div class="po-table-section">
+                <h2>Loaded Purchase Orders</h2>
+                <p class="subtitle">"""
+        + str(total_pos)
+        + """ purchase orders with """
+        + str(total_items)
+        + """ line items</p>
+"""
+        + _build_po_table(purchase_orders)
+        + """
             </div>
         </div>
     </div>
 
     <script>
-        /* --- Tab Switching --- */
-        function switchTab(tab) {
-            document.getElementById('tabCsv').classList.toggle('active', tab === 'csv');
-            document.getElementById('tabPdf').classList.toggle('active', tab === 'pdf');
-            document.getElementById('tabContentCsv').classList.toggle('active', tab === 'csv');
-            document.getElementById('tabContentPdf').classList.toggle('active', tab === 'pdf');
+        /* --- Unified Upload Logic --- */
+        var poFile = null;
+        var poFileType = 'unknown';  /* 'csv', 'tsv', or 'document' */
+        var poDropZone = document.getElementById('poDropZone');
+        var poFileInput = document.getElementById('poFileInput');
+
+        poDropZone.addEventListener('click', function() { poFileInput.click(); });
+        poDropZone.addEventListener('dragover', function(e) {
+            e.preventDefault(); poDropZone.classList.add('drag-over');
+        });
+        poDropZone.addEventListener('dragleave', function() { poDropZone.classList.remove('drag-over'); });
+        poDropZone.addEventListener('drop', function(e) {
+            e.preventDefault(); poDropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length) handlePoFile(e.dataTransfer.files[0]);
+        });
+        poFileInput.addEventListener('change', function() {
+            if (poFileInput.files.length) handlePoFile(poFileInput.files[0]);
+        });
+
+        function detectFileType(filename) {
+            var ext = filename.toLowerCase().split('.').pop();
+            if (ext === 'csv') return 'csv';
+            if (ext === 'tsv') return 'tsv';
+            return 'document';
         }
 
-        /* --- CSV Upload Logic --- */
-        var csvFile = null;
-        var csvDropZone = document.getElementById('csvDropZone');
-        var csvFileInput = document.getElementById('csvFileInput');
+        function handlePoFile(file) {
+            poFile = file;
+            poFileType = detectFileType(file.name);
 
-        csvDropZone.addEventListener('click', function() { csvFileInput.click(); });
-        csvDropZone.addEventListener('dragover', function(e) {
-            e.preventDefault(); csvDropZone.classList.add('drag-over');
-        });
-        csvDropZone.addEventListener('dragleave', function() { csvDropZone.classList.remove('drag-over'); });
-        csvDropZone.addEventListener('drop', function(e) {
-            e.preventDefault(); csvDropZone.classList.remove('drag-over');
-            if (e.dataTransfer.files.length) handleCsvFile(e.dataTransfer.files[0]);
-        });
-        csvFileInput.addEventListener('change', function() {
-            if (csvFileInput.files.length) handleCsvFile(csvFileInput.files[0]);
-        });
+            document.getElementById('poFileName').textContent = file.name;
+            document.getElementById('poSelectedFile').classList.add('show');
+            poDropZone.style.display = 'none';
 
-        function handleCsvFile(file) {
-            csvFile = file;
-            document.getElementById('csvFileName').textContent = file.name;
-            document.getElementById('csvSelectedFile').classList.add('show');
-            csvDropZone.style.display = 'none';
-            document.getElementById('csvUploadBtn').disabled = false;
+            /* Show mode badge */
+            var badge = document.getElementById('poModeBadge');
+            if (poFileType === 'csv' || poFileType === 'tsv') {
+                badge.textContent = 'Direct Import';
+                badge.className = 'file-mode-badge csv-mode';
+            } else {
+                badge.textContent = 'AI Extraction';
+                badge.className = 'file-mode-badge ai-mode';
+            }
+
+            /* Update button label */
+            var btn = document.getElementById('poUploadBtn');
+            if (poFileType === 'csv' || poFileType === 'tsv') {
+                btn.innerHTML = '&#128640; Upload &amp; Process ' + poFileType.toUpperCase();
+            } else {
+                btn.innerHTML = '&#129302; Upload &amp; Extract with AI';
+            }
+            btn.disabled = false;
         }
 
-        document.getElementById('csvRemoveFile').addEventListener('click', function() {
-            csvFile = null;
-            document.getElementById('csvSelectedFile').classList.remove('show');
-            csvDropZone.style.display = 'block';
-            document.getElementById('csvUploadBtn').disabled = true;
-            csvFileInput.value = '';
+        document.getElementById('poRemoveFile').addEventListener('click', function() {
+            poFile = null;
+            poFileType = 'unknown';
+            document.getElementById('poSelectedFile').classList.remove('show');
+            poDropZone.style.display = 'block';
+            document.getElementById('poUploadBtn').disabled = true;
+            document.getElementById('poUploadBtn').innerHTML = '&#128640; Upload &amp; Process';
+            poFileInput.value = '';
         });
 
-        document.getElementById('csvUploadBtn').addEventListener('click', function() {
-            if (!csvFile) return;
-            var btn = document.getElementById('csvUploadBtn');
-            var loading = document.getElementById('csvLoading');
-            var status = document.getElementById('csvStatus');
+        document.getElementById('poUploadBtn').addEventListener('click', function() {
+            if (!poFile) return;
+            var btn = document.getElementById('poUploadBtn');
+            var loading = document.getElementById('poLoading');
+            var loadingText = document.getElementById('poLoadingText');
+            var status = document.getElementById('poStatus');
 
             btn.disabled = true;
             loading.classList.add('show');
             status.classList.remove('show');
 
-            var fd = new FormData();
-            fd.append('file', csvFile);
-
-            fetch('/api/upload-csv', { method: 'POST', body: fd })
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    loading.classList.remove('show');
-                    status.classList.add('show');
-                    if (data.success) {
-                        status.className = 'status-msg show success';
-                        status.textContent = data.message;
-                        setTimeout(function() { location.reload(); }, 1500);
-                    } else {
-                        status.className = 'status-msg show error';
-                        status.textContent = 'Error: ' + (data.error || 'Unknown error');
-                        btn.disabled = false;
-                    }
-                })
-                .catch(function(err) {
-                    loading.classList.remove('show');
-                    status.className = 'status-msg show error';
-                    status.textContent = 'Network error: ' + err.message;
-                    status.classList.add('show');
-                    btn.disabled = false;
-                });
-        });
-
-        /* --- PDF Upload Logic --- */
-        var pdfFile = null;
-        var pdfDropZone = document.getElementById('pdfDropZone');
-        var pdfFileInput = document.getElementById('pdfFileInput');
-
-        pdfDropZone.addEventListener('click', function() { pdfFileInput.click(); });
-        pdfDropZone.addEventListener('dragover', function(e) {
-            e.preventDefault(); pdfDropZone.classList.add('drag-over');
-        });
-        pdfDropZone.addEventListener('dragleave', function() { pdfDropZone.classList.remove('drag-over'); });
-        pdfDropZone.addEventListener('drop', function(e) {
-            e.preventDefault(); pdfDropZone.classList.remove('drag-over');
-            if (e.dataTransfer.files.length) handlePdfFile(e.dataTransfer.files[0]);
-        });
-        pdfFileInput.addEventListener('change', function() {
-            if (pdfFileInput.files.length) handlePdfFile(pdfFileInput.files[0]);
-        });
-
-        function handlePdfFile(file) {
-            pdfFile = file;
-            document.getElementById('pdfFileName').textContent = file.name;
-            document.getElementById('pdfSelectedFile').classList.add('show');
-            pdfDropZone.style.display = 'none';
-            document.getElementById('pdfUploadBtn').disabled = false;
-        }
-
-        document.getElementById('pdfRemoveFile').addEventListener('click', function() {
-            pdfFile = null;
-            document.getElementById('pdfSelectedFile').classList.remove('show');
-            pdfDropZone.style.display = 'block';
-            document.getElementById('pdfUploadBtn').disabled = true;
-            pdfFileInput.value = '';
-        });
-
-        document.getElementById('pdfUploadBtn').addEventListener('click', function() {
-            if (!pdfFile) return;
-            var btn = document.getElementById('pdfUploadBtn');
-            var loading = document.getElementById('pdfLoading');
-            var status = document.getElementById('pdfStatus');
-
-            btn.disabled = true;
-            loading.classList.add('show');
-            status.classList.remove('show');
+            /* Set loading text based on file type */
+            if (poFileType === 'csv' || poFileType === 'tsv') {
+                loadingText.textContent = 'Processing ' + poFileType.toUpperCase() + ' file...';
+            } else {
+                loadingText.textContent = 'Analyzing document with AI... This may take a few seconds';
+            }
 
             var fd = new FormData();
-            fd.append('file', pdfFile);
+            fd.append('file', poFile);
 
-            fetch('/api/upload-po-pdf', { method: 'POST', body: fd })
+            /* Route to correct endpoint based on type */
+            var endpoint = '/api/upload-po';
+
+            fetch(endpoint, { method: 'POST', body: fd })
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     loading.classList.remove('show');
@@ -572,3 +576,81 @@ def get_admin_html(purchase_orders):
     )
 
     return html
+
+
+def _build_po_table(purchase_orders):
+    """Build the PO table HTML or empty state."""
+    if not purchase_orders:
+        return """
+                <div class="empty-state">
+                    <div class="empty-state-icon">&#128203;</div>
+                    <div class="empty-state-text">No purchase orders loaded yet</div>
+                    <div class="empty-state-sub">Upload a CSV, PDF, or photo above to get started</div>
+                </div>
+"""
+
+    rows = ""
+    for po_num, po in purchase_orders.items():
+        vendor = po.get("vendor", "N/A")
+        item_count = len(po.get("items", []))
+        date = po.get("date", "")
+        total = po.get("total", 0)
+
+        total_display = ""
+        if total and float(total) > 0:
+            total_display = "$" + "{:,.2f}".format(float(total))
+        else:
+            # Try to calculate from items
+            calc_total = 0
+            for item in po.get("items", []):
+                try:
+                    qty = float(item.get("quantity", 0))
+                    price = float(item.get("unit_price", 0))
+                    calc_total += qty * price
+                except (ValueError, TypeError):
+                    pass
+            if calc_total > 0:
+                total_display = "$" + "{:,.2f}".format(calc_total)
+            else:
+                total_display = "&mdash;"
+
+        rows += (
+            """
+                    <tr>
+                        <td><span class="po-badge">"""
+            + str(po_num)
+            + """</span></td>
+                        <td>"""
+            + str(vendor)
+            + """</td>
+                        <td>"""
+            + str(item_count)
+            + """</td>
+                        <td>"""
+            + str(date if date else "&mdash;")
+            + """</td>
+                        <td>"""
+            + total_display
+            + """</td>
+                    </tr>"""
+        )
+
+    return (
+        """
+                <table class="po-table">
+                    <thead>
+                        <tr>
+                            <th>PO Number</th>
+                            <th>Vendor</th>
+                            <th>Line Items</th>
+                            <th>Date</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>"""
+        + rows
+        + """
+                    </tbody>
+                </table>
+"""
+    )

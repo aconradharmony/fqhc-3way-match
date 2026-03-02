@@ -1,7 +1,6 @@
 """
 VerifyAP - Main FastAPI Application & Dashboard
-Updated: Feb 26, 2026 — Dashboard is now analytics-only (lifecycle + stats).
-Packing slip upload moved to /deliveries. PO upload generalized on /admin.
+Updated: Mar 2, 2026 — Unified PO upload endpoint (auto-detects CSV/TSV/PDF/image).
 """
 
 import os
@@ -27,7 +26,7 @@ match_results = []
 
 
 # --- Import Page Modules ---
-from .admin_html import get_admin_html, handle_csv_upload, handle_po_pdf_upload
+from .admin_html import get_admin_html, handle_csv_upload, handle_tsv_upload, handle_po_pdf_upload
 from .invoice_html import get_invoice_html
 from .deliveries_html import get_deliveries_html
 from .sidebar_component import get_sidebar_html, get_sidebar_styles
@@ -255,16 +254,16 @@ def get_dashboard_html():
                         <div class="lifecycle-step-value">"""
         + str(invoiced_count)
         + """</div>
-                        <div class="lifecycle-step-sub">Awaiting Match</div>
+                        <div class="lifecycle-step-sub">Invoices Received</div>
                     </div>
                     <div class="lifecycle-arrow">&rarr;</div>
                     <div class="lifecycle-step">
-                        <div class="lifecycle-icon-wrap step-matched">&#10003;</div>
+                        <div class="lifecycle-icon-wrap step-matched">&#9989;</div>
                         <div class="lifecycle-step-label">Matched</div>
                         <div class="lifecycle-step-value">"""
         + str(matched_final)
         + """</div>
-                        <div class="lifecycle-step-sub">Ready to Pay</div>
+                        <div class="lifecycle-step-sub">3-Way Approved</div>
                     </div>
                 </div>
             </div>
@@ -279,18 +278,18 @@ def get_dashboard_html():
                     <div class="stat-card-sub">Packing slips processed</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-card-label">Discrepancies Found</div>
-                    <div class="stat-card-value amber">"""
-        + str(discrepancies)
-        + """</div>
-                    <div class="stat-card-sub">Items need attention</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-card-label">POs in Database</div>
+                    <div class="stat-card-label">Purchase Orders</div>
                     <div class="stat-card-value">"""
         + str(total_pos)
         + """</div>
-                    <div class="stat-card-sub">Active purchase orders</div>
+                    <div class="stat-card-sub">Active POs loaded</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-label">Discrepancies</div>
+                    <div class="stat-card-value amber">"""
+        + str(discrepancies)
+        + """</div>
+                    <div class="stat-card-sub">Need review</div>
                 </div>
                 <div class="stat-card highlight">
                     <div class="stat-card-label">Match Rate</div>
@@ -354,9 +353,47 @@ async def po_stats():
     }
 
 
+@app.post("/api/upload-po")
+async def upload_po(file: UploadFile = File(...)):
+    """Unified PO upload — auto-detects file type and routes accordingly."""
+    contents = await file.read()
+    filename = file.filename or "upload"
+
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+
+    # Route based on file extension
+    if ext == "csv":
+        result = handle_csv_upload(contents, purchase_orders)
+        return JSONResponse(content=result)
+
+    elif ext == "tsv":
+        result = handle_tsv_upload(contents, purchase_orders)
+        return JSONResponse(content=result)
+
+    elif ext in ("pdf", "jpg", "jpeg", "png", "heic", "gif", "webp", "tiff", "tif", "bmp"):
+        result = await handle_po_pdf_upload(contents, filename, purchase_orders)
+        return JSONResponse(content=result)
+
+    else:
+        # Try to detect from content type
+        content_type = file.content_type or ""
+        if "csv" in content_type or "text" in content_type:
+            result = handle_csv_upload(contents, purchase_orders)
+            return JSONResponse(content=result)
+        elif "pdf" in content_type or "image" in content_type:
+            result = await handle_po_pdf_upload(contents, filename, purchase_orders)
+            return JSONResponse(content=result)
+        else:
+            return JSONResponse(content={
+                "success": False,
+                "error": "Unsupported file type: ." + ext + ". Please upload a PDF, image (JPG/PNG), or CSV file."
+            })
+
+
+# Keep legacy endpoints for backward compatibility
 @app.post("/api/upload-csv")
 async def upload_csv(file: UploadFile = File(...)):
-    """Handle CSV upload for purchase orders."""
+    """Handle CSV upload for purchase orders (legacy endpoint)."""
     contents = await file.read()
     result = handle_csv_upload(contents, purchase_orders)
     return JSONResponse(content=result)
@@ -364,7 +401,7 @@ async def upload_csv(file: UploadFile = File(...)):
 
 @app.post("/api/upload-po-pdf")
 async def upload_po_pdf(file: UploadFile = File(...)):
-    """Handle PDF upload for purchase orders (Claude Vision OCR)."""
+    """Handle PDF upload for purchase orders (legacy endpoint)."""
     contents = await file.read()
     filename = file.filename or "po_upload.pdf"
     result = await handle_po_pdf_upload(contents, filename, purchase_orders)
