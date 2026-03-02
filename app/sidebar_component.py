@@ -7,6 +7,7 @@ Updated: Feb 26, 2026 — Added Deliveries page, removed NetSuite references
 def get_sidebar_styles():
     """Return CSS styles for the sidebar navigation."""
     return """
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <style>
         .verifyap-sidebar {
             position: fixed;

@@ -18,6 +18,8 @@ os.makedirs("uploads", exist_ok=True)
 os.makedirs("static", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # --- In-Memory Storage ---
 purchase_orders = {}
 packing_slips = []
