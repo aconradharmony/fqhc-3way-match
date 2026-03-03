@@ -14,6 +14,8 @@ from .sidebar_component import get_sidebar_html, get_sidebar_styles
 
 
 def get_match_detail_html():
+    sidebar_html = get_sidebar_html("discrepancies")
+    sidebar_styles = get_sidebar_styles()
 
     return """<!DOCTYPE html>
 <html lang="en">
