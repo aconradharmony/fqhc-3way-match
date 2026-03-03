@@ -19,7 +19,6 @@ os.makedirs("static", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.include_router(api_v2_router)
 
 # --- In-Memory Storage ---
 purchase_orders = {}
@@ -41,6 +40,7 @@ from .po_list_html import get_po_list_html
 from .discrepancies_html import get_discrepancy_list_html
 from .match_detail_html import get_match_detail_html
 from .document_history_html import get_document_history_html
+app.include_router(api_v2_router)
 
 # --- Dashboard HTML ---
 def get_dashboard_html():
