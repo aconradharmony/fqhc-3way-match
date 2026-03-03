@@ -5,6 +5,8 @@ Shows all matches that flagged discrepancies. Filterable by severity.
 Rows click through to the full match detail / line comparison view.
 """
 
+from .sidebar_component import get_sidebar_html, get_sidebar_styles
+
 
 def get_discrepancy_list_html():
 
@@ -16,6 +18,7 @@ def get_discrepancy_list_html():
     <title>VerifyAP — Discrepancies</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    """ + sidebar_styles + """
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'DM Sans', sans-serif; background: #F1F5F9; color: #1E293B; }
@@ -64,6 +67,7 @@ def get_discrepancy_list_html():
     </style>
 </head>
 <body>
+""" + sidebar_html + """
     <div class="vap-main">
         <div class="page-header">
             <div class="breadcrumb"><a href="/">Dashboard</a> &rsaquo; Discrepancies</div>
@@ -168,3 +172,7 @@ def get_discrepancy_list_html():
     </script>
 </body>
 </html>"""
+
+    sidebar_html = get_sidebar_html("discrepancies")
+    sidebar_styles = get_sidebar_styles()
+

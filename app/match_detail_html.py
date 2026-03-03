@@ -10,6 +10,8 @@ Example from PO#16817:
   Line 4: Sterile Diluent — Not on PO / Slip Shipped 1 / Invoice Qty 1 at $0 — INFO (bundled)
 """
 
+from .sidebar_component import get_sidebar_html, get_sidebar_styles
+
 
 def get_match_detail_html():
 
@@ -21,6 +23,7 @@ def get_match_detail_html():
     <title>VerifyAP — Match Detail</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    """ + sidebar_styles + """
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'DM Sans', sans-serif; background: #F1F5F9; color: #1E293B; }
@@ -153,6 +156,7 @@ def get_match_detail_html():
     </style>
 </head>
 <body>
+""" + sidebar_html + """
     <div class="vap-main">
         <div class="page-header">
             <div class="breadcrumb">
@@ -378,3 +382,7 @@ def get_match_detail_html():
     </script>
 </body>
 </html>"""
+
+    sidebar_html = get_sidebar_html("discrepancies")
+    sidebar_styles = get_sidebar_styles()
+

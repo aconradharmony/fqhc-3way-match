@@ -7,9 +7,15 @@ Rows click through to PO detail (which shows the full 3-way comparison).
 Uses string concatenation (not f-strings) per project convention.
 """
 
+from .sidebar_component import get_sidebar_html, get_sidebar_styles
+
 
 def get_po_list_html():
     """Return full HTML for the PO list page."""
+
+    sidebar_html = get_sidebar_html("po_list")
+    sidebar_styles = get_sidebar_styles()
+
 
     return """<!DOCTYPE html>
 <html lang="en">
@@ -19,6 +25,7 @@ def get_po_list_html():
     <title>VerifyAP — Purchase Orders</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    """ + sidebar_styles + """
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'DM Sans', sans-serif; background: #F1F5F9; color: #1E293B; }
@@ -99,7 +106,7 @@ def get_po_list_html():
     </style>
 </head>
 <body>
-    <!-- Sidebar injected by sidebar_component.py -->
+    """ + sidebar_html + """
 
     <div class="vap-main">
         <div class="page-header">

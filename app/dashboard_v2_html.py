@@ -7,15 +7,15 @@ filtered list views. Stats load from /api/v2/dashboard-stats.
 Uses string concatenation (not f-strings) per project convention.
 """
 
+from .sidebar_component import get_sidebar_html, get_sidebar_styles
+
 
 def get_dashboard_v2_html():
     """Return the full HTML for the drill-down dashboard."""
 
-    # NOTE: In the real codebase, import from sidebar_component:
-    # from .sidebar_component import get_sidebar_html, get_sidebar_styles
-    # sidebar_html = get_sidebar_html("dashboard")
-    # sidebar_styles = get_sidebar_styles()
-    # For this standalone file, we inline the sidebar reference.
+    sidebar_html = get_sidebar_html("dashboard")
+    sidebar_styles = get_sidebar_styles()
+
 
     return """<!DOCTYPE html>
 <html lang="en">
@@ -25,6 +25,7 @@ def get_dashboard_v2_html():
     <title>VerifyAP — Dashboard</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    """ + sidebar_styles + """
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -292,7 +293,7 @@ def get_dashboard_v2_html():
     </style>
 </head>
 <body>
-    <!-- Sidebar injected by sidebar_component.py -->
+    """ + sidebar_html + """
 
     <div class="vap-main">
         <div class="vap-header">

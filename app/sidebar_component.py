@@ -1,6 +1,6 @@
 """
 VerifyAP - Reusable Sidebar Navigation Component
-Updated: Feb 26, 2026 — Added Deliveries page, removed NetSuite references
+Updated: Mar 2, 2026 — Added v2 drill-down pages, section divider
 """
 
 
@@ -67,6 +67,7 @@ def get_sidebar_styles():
         .verifyap-sidebar-nav {
             padding: 16px 12px;
             flex: 1;
+            overflow-y: auto;
         }
 
         .verifyap-sidebar-nav-label {
@@ -77,6 +78,12 @@ def get_sidebar_styles():
             color: rgba(255, 255, 255, 0.35);
             padding: 0 12px;
             margin-bottom: 8px;
+        }
+
+        .verifyap-sidebar-nav-divider {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.08);
+            margin: 12px 12px;
         }
 
         .verifyap-sidebar-link {
@@ -131,35 +138,47 @@ def get_sidebar_styles():
 def get_sidebar_html(active_page="dashboard"):
     """
     Return HTML for the sidebar navigation.
-    
+
     Args:
-        active_page: One of 'dashboard', 'purchase_orders', 'deliveries', 'invoices'
+        active_page: One of 'dashboard', 'purchase_orders', 'deliveries',
+                     'invoices', 'po_list', 'discrepancies',
+                     'document_history'
     """
 
-    nav_items = [
-        {"id": "dashboard", "label": "Dashboard", "icon": "\U0001F4CA", "href": "/"},
-        {"id": "purchase_orders", "label": "Purchase Orders", "icon": "\U0001F4CB", "href": "/admin"},
+    # Upload / workflow section
+    upload_items = [
+        {"id": "purchase_orders", "label": "Upload POs", "icon": "\U0001F4CB", "href": "/admin"},
         {"id": "deliveries", "label": "Deliveries", "icon": "\U0001F4E6", "href": "/deliveries"},
-        {"id": "invoices", "label": "Accounts Payable", "icon": "\U0001F4B0", "href": "/invoices"},
+        {"id": "invoices", "label": "Invoices", "icon": "\U0001F4B0", "href": "/invoices"},
     ]
 
-    nav_links = ""
-    for item in nav_items:
-        active_class = " active" if item["id"] == active_page else ""
-        nav_links += (
-            '<a class="verifyap-sidebar-link'
-            + active_class
-            + '" href="'
-            + item["href"]
-            + '">'
-            + '<span class="verifyap-sidebar-link-icon">'
-            + item["icon"]
-            + "</span>"
-            + "<span>"
-            + item["label"]
-            + "</span>"
-            + "</a>\n"
-        )
+    # Analysis / drill-down section
+    analysis_items = [
+        {"id": "dashboard", "label": "Dashboard", "icon": "\U0001F4CA", "href": "/dashboard-v2"},
+        {"id": "po_list", "label": "Purchase Orders", "icon": "\U0001F4C4", "href": "/po-list"},
+        {"id": "discrepancies", "label": "Discrepancies", "icon": "\u26A0\uFE0F", "href": "/discrepancy-list"},
+        {"id": "document_history", "label": "Document History", "icon": "\U0001F552", "href": "/document-history"},
+    ]
+
+    def build_links(items):
+        links = ""
+        for item in items:
+            active_class = " active" if item["id"] == active_page else ""
+            links += (
+                '<a class="verifyap-sidebar-link'
+                + active_class
+                + '" href="'
+                + item["href"]
+                + '">'
+                + '<span class="verifyap-sidebar-link-icon">'
+                + item["icon"]
+                + "</span>"
+                + "<span>"
+                + item["label"]
+                + "</span>"
+                + "</a>\n"
+            )
+        return links
 
     html = (
         '<div class="verifyap-sidebar">'
@@ -175,11 +194,14 @@ def get_sidebar_html(active_page="dashboard"):
         + "</div>"
         + "</div>"
         + '<nav class="verifyap-sidebar-nav">'
-        + '<div class="verifyap-sidebar-nav-label">Main Menu</div>'
-        + nav_links
+        + '<div class="verifyap-sidebar-nav-label">Analysis</div>'
+        + build_links(analysis_items)
+        + '<div class="verifyap-sidebar-nav-divider"></div>'
+        + '<div class="verifyap-sidebar-nav-label">Upload</div>'
+        + build_links(upload_items)
         + "</nav>"
         + '<div class="verifyap-sidebar-footer">'
-        + "VerifyAP v1.1 &middot; Harmony Hello"
+        + "VerifyAP v2.0 &middot; Harmony Hello"
         + "</div>"
         + "</div>"
     )

@@ -5,6 +5,8 @@ Visual timeline of all document events. When a user selects a PO,
 shows the full lifecycle: upload → match → verify → archive.
 """
 
+from .sidebar_component import get_sidebar_html, get_sidebar_styles
+
 
 def get_document_history_html():
 
@@ -16,6 +18,7 @@ def get_document_history_html():
     <title>VerifyAP — Document History</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    """ + sidebar_styles + """
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'DM Sans', sans-serif; background: #F1F5F9; color: #1E293B; }
@@ -122,6 +125,7 @@ def get_document_history_html():
     </style>
 </head>
 <body>
+""" + sidebar_html + """
     <div class="vap-main">
         <div class="page-header">
             <div class="breadcrumb"><a href="/">Dashboard</a> &rsaquo; Document History</div>
@@ -302,3 +306,7 @@ def get_document_history_html():
     </script>
 </body>
 </html>"""
+
+    sidebar_html = get_sidebar_html("document_history")
+    sidebar_styles = get_sidebar_styles()
+
